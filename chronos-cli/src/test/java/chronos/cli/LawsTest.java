@@ -43,7 +43,7 @@ class LawsTest {
                 assertEquals(env.events(env.last).size(), r.eventsVerified());
                 runs++;
             }
-        assertEquals(30, runs);
+        assertEquals(ALL.size() * 3, runs);
     }
 
     @Test

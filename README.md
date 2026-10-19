@@ -11,7 +11,7 @@ It is implemented from the architecture contract `CHRONOS System Specification v
 Terms such as *Node API*, *event*, *step*, *timeline*, *intervention*, *OMISSION edge* and *first causal divergence* are used
 exactly as the specification defines them.
 
-> **Status in one paragraph.** All eight modules exist and build (verified on macOS and on Linux); 173 automated tests pass; the flagship
+> **Status in one paragraph.** All eight modules exist and build (verified on macOS and on Linux); 174 automated tests pass; the flagship
 > demonstration (acceptance demonstrations AD-1 to AD-6 and known-answer scenarios KA-0, KA-2, KA-3, KA-4 on the replicated store "RE")
 > runs from one command with 24 self-checks; the whole fault catalogue and the whole intervention catalogue of the specification are
 > implemented and tested. What is **not** done (for example the blind
@@ -150,6 +150,8 @@ Measured results (and which targets of Section 8 were met or missed) are in [`do
   demonstration mapped to code and tests, each marked COMPLETE / SIMPLIFIED / NOT IMPLEMENTED / NOT VERIFIED.
 * `docs/DEVIATIONS.md`: where this implementation interprets, extends or departs from the specification, and why. Also the
   open questions Q1 and Q6.
+* `docs/USER_GUIDE.md` (a task-oriented walk-through with the tutorial application), `docs/ARCHITECTURE.md`, `docs/TEACHING_NOTES.md` (one note per component),
+  `docs/DEMO_SCRIPTS.md` (a short runnable script per subsystem, executed by a test), `docs/PORTABILITY.md` (macOS, Linux, Windows status).
 * `docs/BENCHMARKS.md` (measured results), `docs/EVALUATION.md` (the experiment on unplanned failures and what it does not show),
   `docs/sample-report-T0-vs-T0.1.html`, `docs/demo-output.txt` (a real demo transcript), `docs/VIVA_GUIDE.md`.
 
