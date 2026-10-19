@@ -1,0 +1,5 @@
+# Golden files are compared byte for byte (and hashed): never let a checkout rewrite their line endings (Windows autocrlf).
+*.jsonl text eol=lf
+*.java text eol=lf
+*.html text eol=lf
+*.pdf binary

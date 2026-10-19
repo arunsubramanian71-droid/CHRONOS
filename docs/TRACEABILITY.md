@@ -115,7 +115,7 @@ Paths are relative to the module's `src/main/java/chronos/<package>/`.
 | 11 | Torn last record detected and discarded | `TimelineStoreTest`, `PersistenceTest` | COMPLETE |
 | 12 | Components testable in isolation | hand-written fakes in `EngineTest`, `TraceBuilder`, `MemoryTimelines` | COMPLETE |
 | 13 | Single direction of dependency, enforced by the build | `BuildRulesTest` + Maven | COMPLETE |
-| 14 | Linux, Windows, macOS with Java 21 | macOS (Apple Silicon, JDK 21, Maven 3.10.0): full build and tests; **Linux** (Ubuntu 24.04, aarch64, Temurin 21, Maven 3.9.16, in a container on a copy of the source): `mvn package` BUILD SUCCESS, all tests incl. the golden files generated on macOS and the process-kill test | COMPLETE on macOS and Linux; **NOT VERIFIED on Windows** |
+| 14 | Linux, Windows, macOS with Java 21 | macOS (Apple Silicon, JDK 21, Maven 3.10.0): full build and tests; **Linux** (Ubuntu 24.04, aarch64, Temurin 21, Maven 3.9.16, in a container on a copy of the source; see `docs/PORTABILITY.md`, which also prepares Windows): `mvn package` BUILD SUCCESS, all tests incl. the golden files generated on macOS and the process-kill test | COMPLETE on macOS and Linux; **NOT VERIFIED on Windows** |
 | 15 | New member runs the demo from the README in < 10 minutes, three commands | README: set JAVA_HOME, `mvn -ntp package`, `java -jar ... demo`; the demo itself takes seconds | NOT VERIFIED with a new person |
 | 16 | Output speaks CHRONOS vocabulary and cites event ids | all reports | COMPLETE |
 | 17 | Every component has a teaching note and a runnable demo | Javadoc teaching notes on every public type; `docs/VIVA_GUIDE.md` (concept to code to command) | SIMPLIFIED (notes are in Javadoc and the guide, not one per component) |
