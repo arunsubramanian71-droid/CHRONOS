@@ -12,7 +12,8 @@ public record DivergenceReport(String timelineA, String timelineB, boolean stric
                                List<TimelineComparator.Root> roots, TimelineComparator.Root primary,
                                int coneA, int coneB, List<String> affectedNodes, List<String> unexplained,
                                String failureTimeline, String failureEvent, List<Hop> path, String pathNote,
-                               String outcomeA, String outcomeB, List<String> flags, List<String> warnings) {
+                               String outcomeA, String outcomeB, List<String> flags, List<String> warnings,
+                               List<String> coneEventsA, List<String> coneEventsB) {
 
     /** One hop of the explanation path: from-event, to-event, the kind of link and a plain-language line. */
     public record Hop(String from, String to, EdgeKind kind, String text) {}

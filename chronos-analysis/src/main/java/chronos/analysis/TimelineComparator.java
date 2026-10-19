@@ -107,9 +107,9 @@ public final class TimelineComparator {
         BitSet coneBitsA = ga.causalFutureOf(ordered.stream().filter(r -> r.side() == 'A').map(Root::pos).toList());
         BitSet coneBitsB = gb.causalFutureOf(ordered.stream().filter(r -> r.side() == 'B').map(Root::pos).toList());
         int coneA = 0, coneB = 0;
-        List<String> unexplained = new ArrayList<>();
-        for (int i = inDA.nextSetBit(0); i >= 0; i = inDA.nextSetBit(i + 1)) if (coneBitsA.get(i)) coneA++; else unexplained.add(timelineLabel(idA, ea.get(i)));
-        for (int i = inDB.nextSetBit(0); i >= 0; i = inDB.nextSetBit(i + 1)) if (coneBitsB.get(i)) coneB++; else unexplained.add(timelineLabel(idB, eb.get(i)));
+        List<String> unexplained = new ArrayList<>(), coneIdsA = new ArrayList<>(), coneIdsB = new ArrayList<>();
+        for (int i = inDA.nextSetBit(0); i >= 0; i = inDA.nextSetBit(i + 1)) if (coneBitsA.get(i)) { coneA++; coneIdsA.add(ea.get(i).eventId()); } else unexplained.add(timelineLabel(idA, ea.get(i)));
+        for (int i = inDB.nextSetBit(0); i >= 0; i = inDB.nextSetBit(i + 1)) if (coneBitsB.get(i)) { coneB++; coneIdsB.add(eb.get(i).eventId()); } else unexplained.add(timelineLabel(idB, eb.get(i)));
         TreeSet<String> affected = new TreeSet<>();
         for (int i = inDA.nextSetBit(0); i >= 0; i = inDA.nextSetBit(i + 1)) affected.add(ea.get(i).nodeId());
         for (int i = inDB.nextSetBit(0); i >= 0; i = inDB.nextSetBit(i + 1)) affected.add(eb.get(i).nodeId());
@@ -181,7 +181,7 @@ public final class TimelineComparator {
         }
 
         return new DivergenceReport(idA, idB, strict, prefix, counts, firstLocal, ordered, primary, coneA, coneB, new ArrayList<>(affected), unexplained,
-                failTl, failEvent, hops, note, outA, outB, flags, warnings);
+                failTl, failEvent, hops, note, outA, outB, flags, warnings, coneIdsA, coneIdsB);
     }
 
     // ------------------------------------------------------------------------------------------------------------

@@ -78,6 +78,13 @@ public final class CounterfactualEngine {
         }
     }
 
+    /** Re-derives the verdict for a branch that already exists in the store (for reports and the CLI). */
+    public Report assess(String baseline, String child) {
+        TimelineHeader h = store.header(child);
+        if (!baseline.equals(h.parentId())) throw new IllegalArgumentException(child + " is not a direct branch of " + baseline);
+        return evaluate(new Query(baseline, h.branchSeq(), h.interventions(), h.horizon(), h.label()), new TimelineManager.BranchResult(child, h.branchSeq(), null, h));
+    }
+
     private Report evaluate(Query q, TimelineManager.BranchResult br) {
         String baseline = q.baseline(), child = br.timelineId();
         TimelineSummary bs = store.summary(baseline), cs = store.summary(child);

@@ -36,7 +36,8 @@ public final class BadCitizen implements Scenario {
     static final class B implements Node {
         @Override
         public void onMessage(NodeContext ctx, Message m) {
-            long hidden = System.nanoTime() % 100_000; // CHRONOS-BAD-CITIZEN: wall-clock use, differs on every run
+            // CHRONOS-BAD-CITIZEN: wall-clock time and an identity hash code, both banned, so two runs agree only by a ~1e-6 coincidence
+            long hidden = Math.floorMod(System.nanoTime() * 31 + System.identityHashCode(new Object()), 1_000_003L);
             ctx.setTimer("hidden-delay", 100 + hidden);
         }
 

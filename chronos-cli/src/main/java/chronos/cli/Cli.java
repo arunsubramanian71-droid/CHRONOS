@@ -1,0 +1,565 @@
+package chronos.cli;
+
+import chronos.analysis.*;
+import chronos.analysis.CounterfactualEngine.Verdict;
+import chronos.demo.DemoRegistry;
+import chronos.model.*;
+import chronos.runtime.RunResult;
+import chronos.sdk.Scenario;
+import chronos.store.TimelineStore;
+
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.*;
+import java.util.*;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+
+/** The commands of the CHRONOS CLI. Each one drives real components; nothing here is canned output. */
+final class Cli {
+    static final String USAGE = """
+            CHRONOS: record, replay, rewind, branch and compare executions of a distributed application.
+
+            usage: chronos [--data DIR] <command> [options]        (data directory: --data, $CHRONOS_DATA or ./chronos-data)
+
+              scenarios                                   list the registered scenarios
+              run <scenario> [--seed N] [--param k=v]... [--plan default|none|chaos] [--horizon MS] [--no-stop]
+                                [--timeline ID] [--checkpoint-every K]        record a run as a new timeline
+              ls                                          the timeline tree
+              show <timeline> [--table|--diagram|--dot|--json] [--limit N]    print the recorded history
+              inspect <timeline> [--goto violation|SEQ|EVENT] [--back N] [--step N] [--state NODE]... [--world]
+                                [--inflight] [--timers] [--why [EVENT]] [--effects EVENT] [--concurrent EVENT]
+              session <timeline>                          time-travel commands read from stdin (type 'help')
+              verify <timeline> [--from-checkpoint SEQ]   replay and verify every regenerated event against the log
+              determinism <scenario> [--seed N] [--param k=v]... [--jvm N]    run twice (and in N fresh JVMs), compare log hashes
+              branch|counterfactual <timeline> [--at SEQ|EVENT|violation] [--horizon MS] [--label TEXT]
+                                [--heal-earlier MS | --heal-later MS [--rule R]] [--remove-fault R] [--drop MSG]
+                                [--delay MSG:MS] [--duplicate MSG] [--crash NODE:AT]...       run a what-if, print the verdict
+              compare <A> <B> [--strict]                  first causal divergence, cone and explanation path
+              causes <timeline> [--max-size K] [--threads N]    which fault rules are critical (combinations)
+              campaign <scenario> --seeds A-B [--threads N] [--chaos] [--param k=v]... [--keep]
+              report <timeline> [--against B] [--out FILE]  static self-contained HTML report
+              delete <timeline>                           delete a leaf timeline
+              demo [--full]                               the acceptance demonstrations AD-1 to AD-6 on RE, end to end
+            """;
+
+    private final PrintStream out;
+    private final PrintStream err;
+    private final InputStream in;
+    private final DemoRegistry registry = new DemoRegistry();
+    private Path dataDir;
+    private TimelineStore store;
+    private TimelineManager manager;
+
+    Cli(PrintStream out, PrintStream err, InputStream in) {
+        this.out = out;
+        this.err = err;
+        this.in = in;
+    }
+
+    int execute(List<String> argv) {
+        List<String> a = new ArrayList<>(argv);
+        String dataOpt = null;
+        for (int i = 0; i < a.size(); i++)
+            if (a.get(i).equals("--data") && i + 1 < a.size()) {
+                dataOpt = a.get(i + 1);
+                a.subList(i, i + 2).clear();
+                break;
+            }
+        if (a.isEmpty() || a.get(0).equals("help") || a.get(0).equals("--help") || a.get(0).equals("-h")) {
+            out.print(USAGE);
+            return a.isEmpty() ? 1 : 0;
+        }
+        String cmd = a.remove(0);
+        Args args = Args.parse(a);
+        dataDir = Path.of(dataOpt != null ? dataOpt : System.getenv().getOrDefault("CHRONOS_DATA", "chronos-data"));
+        if (cmd.equals("scenarios")) return scenarios();
+        store = new TimelineStore(dataDir);
+        manager = new TimelineManager(store, registry);
+        return switch (cmd) {
+            case "run" -> run(args);
+            case "ls" -> {
+                out.print(manager.tree().isEmpty() ? "(no timelines yet: try 'chronos run re')\n" : manager.tree());
+                yield 0;
+            }
+            case "show" -> show(args);
+            case "inspect" -> inspect(args);
+            case "session" -> session(args);
+            case "verify" -> verify(args);
+            case "determinism" -> determinism(args);
+            case "hash" -> hash(args);
+            case "branch", "counterfactual" -> branch(args);
+            case "compare" -> compare(args);
+            case "causes" -> causes(args);
+            case "campaign" -> campaign(args);
+            case "report" -> report(args);
+            case "delete" -> {
+                String id = args.positional(0, "timeline");
+                store.delete(id);
+                out.println("deleted " + id);
+                yield 0;
+            }
+            case "demo" -> new Demo(this, args).run();
+            default -> throw new CliException("unknown command '" + cmd + "' (try: chronos help)");
+        };
+    }
+
+    // ------------------------------------------------------------------------------------------------------------
+    // recording
+    // ------------------------------------------------------------------------------------------------------------
+
+    private int scenarios() {
+        out.println("registered scenarios (D-22):");
+        for (String n : registry.names()) out.println("  " + n);
+        out.println("parameters: re/re2 partition=on|off, ka2 delay=on|off, ka3 crash=on|off, gossip nodes=N horizon=MS");
+        return 0;
+    }
+
+    Map<String, String> params(Args a) {
+        Map<String, String> m = new TreeMap<>();
+        for (String kv : a.all("param")) {
+            int eq = kv.indexOf('=');
+            if (eq < 1) throw new CliException("--param expects key=value, got '" + kv + "'");
+            m.put(kv.substring(0, eq), kv.substring(eq + 1));
+        }
+        return m;
+    }
+
+    private int run(Args a) {
+        String scenario = a.positional(0, "scenario");
+        record(scenario, a.num("seed", 42), params(a), a.get("plan", a.has("chaos") ? "chaos" : "default"), a.has("horizon") ? a.num("horizon", 0) : null,
+                a.has("no-stop") ? Boolean.FALSE : null, a.num("checkpoint-every", 25), a.get("timeline"));
+        return 0;
+    }
+
+    /** Records a scenario into the store and prints what happened. Returns the result; the new timeline id is in {@link #lastTimeline}. */
+    RunResult record(String scenario, long seed, Map<String, String> params, String planMode, Long horizon, Boolean stop, long ckpt, String timelineId) {
+        Scenario sc = registry.create(scenario, params);
+        long h = horizon != null ? horizon : sc.defaultHorizon();
+        FaultPlan plan = switch (planMode) {
+            case "default" -> null;
+            case "none" -> FaultPlan.empty();
+            case "chaos" -> ChaosPlanGenerator.generate(sc, seed, h);
+            default -> throw new CliException("--plan must be default, none or chaos");
+        };
+        String id = timelineId != null ? timelineId : manager.allocateRootId();
+        Recording.Spec spec = Recording.Spec.of(scenario, seed).withParams(params).withPlan(plan).withHorizon(horizon).withStopOnViolation(stop).withCheckpointInterval(ckpt);
+        RunResult r = Recording.record(store, registry, id, spec);
+        lastTimeline = id;
+        out.println("recorded " + id + ": " + scenario + (params.isEmpty() ? "" : " " + params) + " seed=" + seed + "  -> " + r.status() + ", " + r.eventCount() + " events, final virtual time "
+                + r.finalVirtualTime() + " ms");
+        out.println("  log hash " + LogHash.of(store.events(id)) + "   stored under " + dataDir.resolve("timelines").resolve(id));
+        if (!r.faultCoverage().isEmpty()) out.println("  fault coverage: " + r.faultCoverage() + (r.unfiredRules().isEmpty() ? "" : "   WARNING: rules that never fired: " + r.unfiredRules()));
+        if (r.violated()) {
+            out.println("  INVARIANT VIOLATED: " + r.firstViolationInvariant() + " at " + r.firstViolationEventId());
+            TimeTravelSession s = new TimeTravelSession(store, id);
+            s.goToViolation();
+            out.print(indent(s.why(null), "  "));
+        }
+        return r;
+    }
+
+    String lastTimeline;
+
+    // ------------------------------------------------------------------------------------------------------------
+    // inspecting
+    // ------------------------------------------------------------------------------------------------------------
+
+    private int show(Args a) {
+        String tl = a.positional(0, "timeline");
+        TimelineHeader h = store.header(tl);
+        List<Event> events = store.events(tl);
+        CausalGraph g = CausalGraph.build(events);
+        TimelineSummary sum = store.summary(tl);
+        if (a.has("json")) out.println(Exports.json(g, h.nodes()));
+        else if (a.has("dot")) out.print(Exports.dot(g, h.nodes()));
+        else if (a.has("diagram")) out.print(Exports.spaceTime(g, h.nodes()));
+        else {
+            out.println(tl + ": " + h.scenario() + " " + h.params() + " seed=" + h.seed() + " nodes=" + h.nodes() + (h.parentId() != null ? "  branch of " + h.parentId() + " at " + h.branchSeq() : ""));
+            out.println("  " + (sum == null ? "RECORDING (unfinished)" : sum.status() + ", " + events.size() + " events, final virtual time " + sum.finalVirtualTime() + " ms") + "; graph: " + g.size() + " vertices, " + g.edgeCount() + " edges");
+            int limit = (int) a.num("limit", 200);
+            out.print(Exports.eventTable(events.subList(0, Math.min(limit, events.size())), h.nodes()));
+            if (events.size() > limit) out.println("... " + (events.size() - limit) + " more (use --limit)");
+        }
+        return 0;
+    }
+
+    private int inspect(Args a) {
+        String tl = a.positional(0, "timeline");
+        TimeTravelSession s = new TimeTravelSession(store, tl);
+        if (a.has("goto")) goTo(s, a.get("goto"));
+        if (a.has("back")) printEvent(s, s.back((int) a.num("back", 1)));
+        if (a.has("step")) printEvent(s, s.step((int) a.num("step", 1)));
+        for (String n : a.all("state")) out.println("state of " + n + " at " + s.current().eventId() + ": " + Canon.json(s.stateOf(n)));
+        if (a.has("world")) out.print(s.world());
+        if (a.has("inflight")) {
+            out.println("in flight at " + s.current().eventId() + ":");
+            for (TimeTravelSession.InFlight m : s.inflight()) out.println("  " + m.messageId() + " " + m.type() + " " + m.from() + " -> " + m.to() + " due at " + m.dueAt());
+        }
+        if (a.has("timers")) {
+            out.println("pending timers at " + s.current().eventId() + ":");
+            for (TimeTravelSession.PendingTimer t : s.timers()) out.println("  " + t.timerId() + " " + t.name() + " on " + t.node() + " due at " + t.dueAt());
+        }
+        if (a.has("why")) out.print(s.why(a.get("why").isEmpty() ? null : a.get("why")));
+        if (a.has("effects")) {
+            List<Event> ef = s.effects(a.get("effects"));
+            out.println(ef.size() + " events could have been influenced by " + a.get("effects") + ":");
+            ef.stream().limit(40).forEach(e -> out.println("  " + e.eventId() + " " + Exports.describe(e, s.graph())));
+        }
+        if (a.has("concurrent")) {
+            List<Event> c = s.concurrentWith(a.get("concurrent"));
+            out.println(c.size() + " events are concurrent with " + a.get("concurrent") + " (no causal relation)");
+        }
+        if (!(a.has("goto") || a.has("back") || a.has("step") || a.has("state") || a.has("world") || a.has("inflight") || a.has("timers") || a.has("why") || a.has("effects") || a.has("concurrent")))
+            out.print(s.world());
+        return 0;
+    }
+
+    private void goTo(TimeTravelSession s, String spec) {
+        Event e;
+        if (spec.equals("violation")) e = s.goToViolation();
+        else if (spec.matches("\\d+")) e = s.goTo(Integer.parseInt(spec));
+        else e = s.goToEvent(spec);
+        printEvent(s, e);
+    }
+
+    private void printEvent(TimeTravelSession s, Event e) {
+        out.println("cursor " + s.cursor() + ": " + e.eventId() + " [" + e.nodeId() + " t=" + e.virtualTime() + " L" + e.lamport() + " " + Exports.vec(e.vector()) + "] " + Exports.describe(e, s.graph()));
+    }
+
+    private int session(Args a) {
+        String tl = a.positional(0, "timeline");
+        TimeTravelSession s = new TimeTravelSession(store, tl);
+        out.println("CHRONOS time travel on " + tl + " (" + store.events(tl).size() + " events). Type 'help'. The past is immutable: going live creates a branch.");
+        BufferedReader r = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
+        try {
+            String line;
+            while ((line = r.readLine()) != null) {
+                line = line.trim();
+                if (line.isEmpty() || line.startsWith("#")) continue;
+                out.println("> " + line);
+                if (line.equals("quit") || line.equals("exit")) break;
+                try {
+                    s = sessionCommand(s, line);
+                } catch (CliException | IllegalArgumentException | IllegalStateException e) {
+                    out.println("  error: " + e.getMessage());
+                }
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        return 0;
+    }
+
+    private TimeTravelSession sessionCommand(TimeTravelSession s, String line) {
+        String[] t = line.split("\\s+");
+        String c = t[0];
+        String arg = t.length > 1 ? t[1] : null;
+        switch (c) {
+            case "help" -> out.println("  goto <seq|event|violation>  step [n]  back [n]  next-on <node>  prev-on <node>  find <kind=K|node=N|text=S|violation> [back]\n"
+                    + "  state <node>  world  inflight  timers  why [event]  effects [event]  concurrent-with [event]  watch <node.zone.field>\n"
+                    + "  diff <timeline>  branch <intervention options as in 'chronos branch'>  quit");
+            case "goto" -> goTo(s, need(arg, "goto <seq|event|violation>"));
+            case "step" -> printEvent(s, s.step(arg == null ? 1 : Integer.parseInt(arg)));
+            case "back" -> printEvent(s, s.back(arg == null ? 1 : Integer.parseInt(arg)));
+            case "next-on" -> printEvent(s, s.nextOn(need(arg, "next-on <node>")));
+            case "prev-on" -> printEvent(s, s.prevOn(need(arg, "prev-on <node>")));
+            case "find" -> {
+                java.util.function.Predicate<Event> p = findPredicate(Arrays.asList(t).subList(1, t.length), s);
+                boolean back = Arrays.asList(t).contains("back");
+                Optional<Event> e = s.find(p, !back);
+                if (e.isPresent()) printEvent(s, e.get());
+                else out.println("  no such event");
+            }
+            case "state" -> out.println("  " + Canon.json(s.stateOf(need(arg, "state <node>"))));
+            case "world" -> out.print(indent(s.world(), "  "));
+            case "inflight" -> s.inflight().forEach(m -> out.println("  " + m.messageId() + " " + m.type() + " " + m.from() + " -> " + m.to() + " due " + m.dueAt()));
+            case "timers" -> s.timers().forEach(m -> out.println("  " + m.timerId() + " " + m.name() + " on " + m.node() + " due " + m.dueAt()));
+            case "why" -> out.print(indent(s.why(arg), "  "));
+            case "effects" -> s.effects(arg).stream().limit(30).forEach(e -> out.println("  " + e.eventId() + " " + Exports.describe(e, s.graph())));
+            case "concurrent-with" -> out.println("  " + s.concurrentWith(arg).size() + " concurrent events");
+            case "watch" -> {
+                String q = need(arg, "watch <node.zone.field>");
+                int dot = q.indexOf('.');
+                for (TimeTravelSession.FieldChange ch : s.watch(q.substring(0, dot), q.substring(dot + 1)))
+                    out.println("  " + ch.eventId() + " (position " + ch.position() + "): " + Canon.json(ch.before()) + " -> " + Canon.json(ch.after()));
+            }
+            case "diff" -> out.print(indent(s.diff(need(arg, "diff <timeline>")), "  "));
+            case "branch" -> {
+                // going live always creates a branch (Section 16): the cursor's step boundary is the branch point
+                List<String> rest = new ArrayList<>(Arrays.asList(t).subList(1, t.length));
+                Args ba = Args.parse(rest);
+                long at = manager.roundToBoundary(s.timelineId(), s.cursor());
+                String child = doBranch(s.timelineId(), at, ba, true);
+                out.println("  switched to " + child);
+                return new TimeTravelSession(store, child);
+            }
+            default -> throw new CliException("unknown session command '" + c + "' (type help)");
+        }
+        return s;
+    }
+
+    private static String need(String v, String usage) {
+        if (v == null) throw new CliException("usage: " + usage);
+        return v;
+    }
+
+    private java.util.function.Predicate<Event> findPredicate(List<String> terms, TimeTravelSession s) {
+        java.util.function.Predicate<Event> p = e -> true;
+        for (String term : terms) {
+            if (term.equals("back")) continue;
+            if (term.equals("violation")) p = p.and(e -> e.kind() == EventKind.INVARIANT_VIOLATED);
+            else if (term.startsWith("kind=")) { EventKind k = EventKind.valueOf(term.substring(5).toUpperCase()); p = p.and(e -> e.kind() == k); }
+            else if (term.startsWith("node=")) { String n = term.substring(5); p = p.and(e -> e.nodeId().equals(n)); }
+            else if (term.startsWith("text=")) { String x = term.substring(5).toLowerCase(); p = p.and(e -> Exports.describe(e, s.graph()).toLowerCase().contains(x)); }
+            else throw new CliException("find expects violation, kind=K, node=N or text=S, got '" + term + "'");
+        }
+        return p;
+    }
+
+    // ------------------------------------------------------------------------------------------------------------
+    // verification and determinism
+    // ------------------------------------------------------------------------------------------------------------
+
+    private int verify(Args a) {
+        String tl = a.positional(0, "timeline");
+        ReplayEngine.Result r = a.has("from-checkpoint") ? manager.replayEngine().verifyFrom(tl, a.num("from-checkpoint", 0)) : manager.replayEngine().verify(tl);
+        out.println(r.summary());
+        for (String w : r.warnings()) out.println("  warning: " + w);
+        return r.ok() ? 0 : 2;
+    }
+
+    private int determinism(Args a) {
+        String scenario = a.positional(0, "scenario");
+        Recording.Spec spec = Recording.Spec.of(scenario, a.num("seed", 42)).withParams(params(a)).withCheckpointInterval(0);
+        Recording.DeterminismReport r = Recording.determinismCheck(registry, spec);
+        out.println("run twice in this JVM: " + (r.identical() ? "IDENTICAL" : "DIFFERENT at " + r.firstDifference()) + "  (" + r.events() + " events, hash " + r.hashA() + ")");
+        boolean ok = r.identical();
+        int jvms = (int) a.num("jvm", 0);
+        for (int i = 1; i <= jvms; i++) {
+            String h = externalHash(scenario, spec);
+            boolean same = h.equals(r.hashA());
+            ok &= same;
+            out.println("fresh JVM launch " + i + ": hash " + h + "  " + (same ? "matches" : "DIFFERS"));
+        }
+        out.println(ok ? "DETERMINISTIC" : "NONDETERMINISM DETECTED");
+        return ok ? 0 : 2;
+    }
+
+    private String externalHash(String scenario, Recording.Spec spec) {
+        try {
+            List<String> cmd = new ArrayList<>(List.of(Path.of(System.getProperty("java.home"), "bin", "java").toString(), "-cp", System.getProperty("java.class.path"), "chronos.cli.Main", "hash", scenario, "--seed", Long.toString(spec.seed())));
+            for (Map.Entry<String, String> e : spec.params().entrySet()) { cmd.add("--param"); cmd.add(e.getKey() + "=" + e.getValue()); }
+            Process p = new ProcessBuilder(cmd).redirectErrorStream(true).start();
+            String o = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
+            if (!p.waitFor(120, TimeUnit.SECONDS) || p.exitValue() != 0) throw new CliException("the fresh JVM failed: " + o);
+            return o;
+        } catch (IOException | InterruptedException e) {
+            throw new CliException("cannot launch a fresh JVM: " + e);
+        }
+    }
+
+    private int hash(Args a) {
+        Recording.MemoryRun run = Recording.recordInMemory(registry, "T-det", Recording.Spec.of(a.positional(0, "scenario"), a.num("seed", 42)).withParams(params(a)).withCheckpointInterval(0));
+        out.println(LogHash.of(run.log().events()));
+        return 0;
+    }
+
+    // ------------------------------------------------------------------------------------------------------------
+    // branching, counterfactuals, comparison
+    // ------------------------------------------------------------------------------------------------------------
+
+    private int branch(Args a) {
+        String tl = a.positional(0, "timeline");
+        List<Intervention> ivs = parseInterventions(a, tl);
+        long at = a.has("at") ? resolvePosition(tl, a.get("at")) : defaultBranchPoint(tl, ivs);
+        doBranch(tl, at, a, false);
+        return 0;
+    }
+
+    /** Runs the counterfactual and prints the verdict and the comparison. Returns the new timeline id. */
+    String doBranch(String tl, long at, Args a, boolean quiet) {
+        List<Intervention> ivs = parseInterventions(a, tl);
+        if (ivs.isEmpty()) out.println("  (no intervention given: a no-op branch, which must be event-identical to its parent, law M7)");
+        CounterfactualEngine cf = new CounterfactualEngine(manager);
+        CounterfactualEngine.Report rep = cf.run(new CounterfactualEngine.Query(tl, at, ivs, a.has("horizon") ? a.num("horizon", 0) : null, a.get("label")));
+        lastTimeline = rep.timelineId();
+        lastReport = rep;
+        out.print(rep.text());
+        if (!a.has("quiet")) out.print(rep.divergence().text());
+        return rep.timelineId();
+    }
+
+    CounterfactualEngine.Report lastReport;
+
+    long resolvePosition(String tl, String spec) {
+        List<Event> es = store.events(tl);
+        if (spec.equals("violation")) {
+            for (Event e : es) if (e.kind() == EventKind.INVARIANT_VIOLATED) return e.seq();
+            throw new CliException(tl + " has no violation");
+        }
+        if (spec.matches("\\d+")) return Long.parseLong(spec);
+        for (Event e : es) if (e.eventId().equals(spec)) return e.seq();
+        throw new CliException("no event " + spec + " in " + tl);
+    }
+
+    List<Intervention> parseInterventions(Args a, String tl) {
+        List<Intervention> out = new ArrayList<>();
+        int n = 0;
+        for (String v : a.all("heal-earlier")) out.add(Intervention.shiftHeal("heal-early" + suffix(n++, out), partitionRule(a, tl), -num(v, "--heal-earlier")));
+        for (String v : a.all("heal-later")) out.add(Intervention.shiftHeal("heal-late" + suffix(n++, out), partitionRule(a, tl), num(v, "--heal-later")));
+        for (String v : a.all("remove-fault")) out.add(Intervention.removeFault("remove-" + safe(v), v));
+        for (String v : a.all("drop")) out.add(Intervention.dropMessage("drop-" + safe(v), v));
+        for (String v : a.all("duplicate")) out.add(Intervention.duplicateMessage("dup-" + safe(v), v));
+        for (String v : a.all("delay")) {
+            String[] p = v.split(":");
+            if (p.length != 2) throw new CliException("--delay expects MSG:MS (for example p#14:250)");
+            out.add(Intervention.delayMessage("delay-" + safe(p[0]), p[0], num(p[1], "--delay")));
+        }
+        for (String v : a.all("crash")) {
+            String[] p = v.split(":");
+            if (p.length != 2) throw new CliException("--crash expects NODE:AT (for example b:2100)");
+            out.add(Intervention.crashNode("crash-" + safe(p[0]), p[0], num(p[1], "--crash")));
+        }
+        return out;
+    }
+
+    private static String suffix(int n, List<Intervention> existing) {
+        return existing.isEmpty() ? "" : "-" + (n + 1);
+    }
+
+    private static long num(String v, String opt) {
+        try {
+            return Long.parseLong(v);
+        } catch (NumberFormatException e) {
+            throw new CliException(opt + " expects a number, got '" + v + "'");
+        }
+    }
+
+    private static String safe(String s) {
+        return s.replace('#', '_').replace(':', '_');
+    }
+
+    private String partitionRule(Args a, String tl) {
+        if (a.has("rule")) return a.get("rule");
+        List<String> rules = store.header(rootOf(tl)).faultPlan().rules().stream().filter(r -> r.action() == FaultRule.FaultAction.PARTITION).map(FaultRule::id).toList();
+        if (rules.size() != 1) throw new CliException("name the partition rule with --rule (the plan has " + rules + ")");
+        return rules.get(0);
+    }
+
+    private String rootOf(String tl) {
+        TimelineHeader h = store.header(tl);
+        return h.parentId() == null ? tl : rootOf(h.parentId());
+    }
+
+    /** A sensible branch point: where the first intervention starts to matter (Section 19: "just before" the suspect). */
+    long defaultBranchPoint(String tl, List<Intervention> ivs) {
+        if (ivs.isEmpty()) return store.groupEnds(tl).get(store.groupEnds(tl).size() / 2);
+        List<Event> es = store.events(tl);
+        Intervention iv = ivs.get(0);
+        long target = switch (iv.type()) {
+            case Intervention.SHIFT_HEAL -> firstFaultEvent(es, (String) iv.params().get("ruleId"));
+            case Intervention.REMOVE_FAULT -> firstFaultEvent(es, (String) iv.params().get("ruleId")) - 1;
+            case Intervention.CRASH_NODE -> {
+                long at = Canon.num(iv.params().get("at"));
+                long last = 0;
+                for (Event e : es) if (e.virtualTime() < at) last = e.seq();
+                yield last;
+            }
+            default -> {
+                String msg = (String) iv.params().get("messageId");
+                for (Event e : es) if (e.eventId().equals(msg)) yield e.seq() - 1;
+                throw new CliException("message " + msg + " was never sent in " + tl);
+            }
+        };
+        return manager.roundToBoundary(tl, Math.max(0, target));
+    }
+
+    private static long firstFaultEvent(List<Event> es, String rule) {
+        for (Event e : es) if (e.kind() == EventKind.FAULT_INJECTED && rule.equals(e.payload().get("rule"))) return e.seq();
+        throw new CliException("fault rule " + rule + " never fired in this timeline");
+    }
+
+    private int compare(Args a) {
+        DivergenceReport d = new TimelineComparator(store).compare(a.positional(0, "timeline A"), a.positional(1, "timeline B"), a.has("strict"));
+        out.print(d.text());
+        return 0;
+    }
+
+    private int causes(Args a) {
+        String tl = a.positional(0, "timeline");
+        CounterfactualEngine.CauseSearch cs = new CounterfactualEngine(manager).findCriticalFaultSets(tl, (int) a.num("max-size", 2), (int) a.num("threads", 2));
+        out.println("remove which fault rules to make the failure disappear? (each trial is a real counterfactual branch)");
+        for (Map.Entry<Set<String>, Verdict> e : cs.tried().entrySet()) out.println("  remove " + e.getKey() + " -> " + e.getValue());
+        out.println(cs.minimalCriticalSets().isEmpty() ? "no combination of up to " + a.num("max-size", 2) + " rules is critical" : "MINIMAL CRITICAL SETS: " + cs.minimalCriticalSets());
+        return 0;
+    }
+
+    private int campaign(Args a) {
+        String scenario = a.positional(0, "scenario");
+        String range = a.get("seeds", "1-50");
+        String[] p = range.split("-");
+        long from = Long.parseLong(p[0]), to = p.length > 1 ? Long.parseLong(p[1]) : from;
+        Map<String, String> params = params(a);
+        List<Campaign.Entry> res = Campaign.run(registry, scenario, params, from, to, (int) a.num("threads", 4), a.has("chaos"), a.has("horizon") ? a.num("horizon", 0) : null, null);
+        long bad = res.stream().filter(Campaign.Entry::violated).count();
+        out.println("campaign " + scenario + " seeds " + from + "-" + to + (a.has("chaos") ? " with chaos plans" : "") + ": " + res.size() + " runs, " + bad + " ended in an invariant violation");
+        for (Campaign.Entry e : res)
+            if (e.violated()) {
+                out.println("  seed " + e.seed() + ": " + e.violation() + " (" + e.events() + " events), plan " + e.plan().rules().stream().map(FaultRule::id).toList());
+                if (a.has("keep")) record(scenario, e.seed(), params, a.has("chaos") ? "chaos" : "default", a.has("horizon") ? a.num("horizon", 0) : null, null, 25, null);
+            }
+        return 0;
+    }
+
+    private int report(Args a) {
+        String tl = a.positional(0, "timeline");
+        String against = a.get("against");
+        Path file = Path.of(a.get("out", HtmlReport.defaultOut(dataDir, tl, against).toString()));
+        generateReport(tl, against, file);
+        return 0;
+    }
+
+    /** Generates the self-contained HTML report and verifies it (exists, non-empty, no external references). */
+    Path generateReport(String tl, String against, Path file) {
+        CounterfactualEngine.Report cf = null;
+        if (against != null && tl.equals(store.header(against).parentId())) cf = new CounterfactualEngine(manager).assess(tl, against);
+        String cmd = "java -jar chronos-cli/target/chronos.jar --data " + dataDir + " report " + tl + (against != null ? " --against " + against : "");
+        String html = new HtmlReport(store, registry, 600, 3000).render(tl, against, cf, cmd);
+        try {
+            Files.createDirectories(file.toAbsolutePath().getParent());
+            Files.writeString(file, html, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        if (HtmlReport.referencesExternalResources(html)) throw new IllegalStateException("the report references an external resource; it must be self-contained");
+        out.println("report written: " + file.toAbsolutePath() + " (" + html.length() / 1024 + " KiB, self-contained, no network access)");
+        return file;
+    }
+
+    // ------------------------------------------------------------------------------------------------------------
+
+    TimelineStore store() {
+        return store;
+    }
+
+    TimelineManager manager() {
+        return manager;
+    }
+
+    PrintStream out() {
+        return out;
+    }
+
+    Path dataDir() {
+        return dataDir;
+    }
+
+    DemoRegistry registry() {
+        return registry;
+    }
+
+    static String indent(String s, String pad) {
+        return s.lines().map(l -> pad + l).collect(Collectors.joining("\n", "", "\n"));
+    }
+}

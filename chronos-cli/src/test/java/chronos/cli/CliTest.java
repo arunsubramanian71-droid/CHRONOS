@@ -1,0 +1,210 @@
+package chronos.cli;
+
+import chronos.model.Canon;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.*;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+/** The command line, driven through {@link Main#run}: every command must perform a real operation and report honestly. */
+class CliTest {
+    @TempDir
+    Path tmp;
+
+    record R(int code, String out, String err) {}
+
+    private R cliIn(String stdin, String... args) {
+        ByteArrayOutputStream o = new ByteArrayOutputStream(), e = new ByteArrayOutputStream();
+        String[] full = new String[args.length + 2];
+        full[0] = "--data";
+        full[1] = tmp.resolve("data").toString();
+        System.arraycopy(args, 0, full, 2, args.length);
+        int code = Main.run(full, new PrintStream(o, true, StandardCharsets.UTF_8), new PrintStream(e, true, StandardCharsets.UTF_8),
+                new ByteArrayInputStream(stdin.getBytes(StandardCharsets.UTF_8)));
+        return new R(code, o.toString(StandardCharsets.UTF_8), e.toString(StandardCharsets.UTF_8));
+    }
+
+    private R cli(String... args) {
+        return cliIn("", args);
+    }
+
+    @Test
+    void helpAndUnknownCommands() {
+        R h = cli("help");
+        assertEquals(0, h.code());
+        assertTrue(h.out().contains("counterfactual") && h.out().contains("report") && h.out().contains("verify"));
+        R bad = cli("frobnicate");
+        assertEquals(1, bad.code());
+        assertTrue(bad.err().contains("unknown command"));
+        assertEquals(1, cli().code());
+    }
+
+    @Test
+    void runRecordsATimelineAndExplainsTheFailure() {
+        R r = cli("run", "re", "--seed", "42", "--no-stop");
+        assertEquals(0, r.code(), r.err());
+        assertTrue(r.out().contains("recorded T0"), r.out());
+        assertTrue(r.out().contains("INVARIANT VIOLATED: single-primary"));
+        assertTrue(r.out().contains("fault:partition-pb#1") && r.out().contains("OMISSION"));
+        assertTrue(Files.isDirectory(tmp.resolve("data/timelines/T0/events")));
+        assertTrue(cli("ls").out().contains("T0  re seed=42"));
+        // a run is recorded under the next id, and a named scenario with params works
+        R r2 = cli("run", "re", "--param", "partition=off", "--seed", "7");
+        assertTrue(r2.out().contains("recorded T1") && !r2.out().contains("VIOLATED"), r2.out());
+        assertEquals(1, cli("run", "nope").code());
+        assertEquals(1, cli("run", "re", "--seed", "abc").code());
+        assertTrue(cli("scenarios").out().contains("ka3"));
+    }
+
+    @Test
+    void showInspectAndVerify() throws Exception {
+        cli("run", "pingpong");
+        R table = cli("show", "T0");
+        assertTrue(table.out().contains("vector[A,B,env]") && table.out().contains("[3,3,0]"), table.out());
+        assertTrue(cli("show", "T0", "--diagram").out().contains("recv ping <- A"));
+        assertTrue(cli("show", "T0", "--dot").out().startsWith("digraph chronos"));
+        assertEquals(6, Canon.list(Canon.parseMap(cli("show", "T0", "--json").out()).get("events")).size());
+
+        cli("run", "re", "--no-stop", "--checkpoint-every", "10");
+        R ins = cli("inspect", "T1", "--goto", "violation", "--world", "--state", "b", "--why");
+        assertEquals(0, ins.code(), ins.err());
+        assertTrue(ins.out().contains("cursor") && ins.out().contains("node states") && ins.out().contains("\"role\":\"PRIMARY\"") && ins.out().contains("fault:partition-pb#1"), ins.out());
+        assertTrue(cli("inspect", "T1", "--goto", "5", "--back", "2", "--step", "1").out().contains("cursor 4"));
+        assertEquals(1, cli("inspect", "T1", "--goto", "9999").code());
+        assertEquals(1, cli("inspect", "T9").code());
+
+        R v = cli("verify", "T1");
+        assertEquals(0, v.code());
+        assertTrue(v.out().contains("REPLAY VERIFIED"));
+        R vc = cli("verify", "T1", "--from-checkpoint", "26");
+        assertEquals(0, vc.code());
+        assertTrue(vc.out().contains("from position 27"), vc.out());
+        // a tampered log is refused with exit code 2 and a clear message
+        Path seg = tmp.resolve("data/timelines/T1/events/000000.log");
+        List<String> lines = Files.readAllLines(seg);
+        int victim = 4;
+        while (lines.get(victim).startsWith("{\"commit\"")) victim++; // damage an event line, not a commit line
+        lines.set(victim, lines.get(victim).replace("\"vt\":", "\"vt\":9"));
+        Files.write(seg, lines);
+        R tampered = cli("verify", "T1");
+        assertEquals(2, tampered.code());
+        assertTrue(tampered.err().contains("not usable"), tampered.err());
+    }
+
+    @Test
+    void verifyFlagsTheBadCitizenWithExitCodeTwo() {
+        cli("run", "bad", "--seed", "1");
+        R v = cli("verify", "T0");
+        assertEquals(2, v.code(), v.out());
+        assertTrue(v.out().contains("DETERMINISM VIOLATION") && v.out().contains("mismatch at B#3"));
+    }
+
+    @Test
+    void branchCompareCausesAndReport() throws Exception {
+        cli("run", "re", "--no-stop");
+        R b = cli("branch", "T0", "--heal-earlier", "200");
+        assertEquals(0, b.code(), b.err());
+        assertTrue(b.out().contains("VERDICT: FAILURE_DISAPPEARS") && b.out().contains("FIRST CAUSAL DIVERGENCE: iv:heal-early"), b.out());
+        assertTrue(cli("ls").out().contains("T0.1") && cli("ls").out().contains("iv:heal-early"));
+        R c = cli("compare", "T0", "T0.1");
+        assertTrue(c.out().contains("explanation path") && c.out().contains("fault:partition-pb#1"), c.out());
+        assertTrue(cli("compare", "T0", "T0", "--strict").out().contains("no divergence"));
+        // other intervention flags
+        R d = cli("branch", "T0", "--drop", "p#16", "--quiet");
+        assertEquals(0, d.code(), d.err());
+        assertTrue(d.out().contains("VERDICT:"));
+        R bad = cli("branch", "T0", "--remove-fault", "no-such-rule");
+        assertEquals(1, bad.code());
+        assertTrue(bad.err().contains("no-such-rule"), bad.err());
+        assertEquals(1, cli("branch", "T0", "--delay", "garbage").code());
+        // the failed intervention left no half-written timeline behind that breaks ls
+        assertEquals(0, cli("ls").code());
+
+        Path file = tmp.resolve("out/report.html");
+        R rep = cli("report", "T0", "--against", "T0.1", "--out", file.toString());
+        assertEquals(0, rep.code(), rep.err());
+        String html = Files.readString(file);
+        assertTrue(html.startsWith("<!doctype html>") && html.contains("<svg") && html.contains("FAILURE_DISAPPEARS") && html.contains("iv:heal-early") && html.contains("VERIFIED"));
+        assertFalse(HtmlReport.referencesExternalResources(html));
+        assertTrue(html.contains("java -jar chronos-cli/target/chronos.jar"), "the regeneration command is documented in the report");
+        // a report of a run without a violation
+        cli("run", "re", "--param", "partition=off");
+        String ok = cli("report", "T0.1").out();
+        assertTrue(ok.contains("report written"));
+    }
+
+    @Test
+    void causesListsBothPartitionsOfTheOverdeterminedScenario() {
+        cli("run", "re2");
+        R c = cli("causes", "T0");
+        assertEquals(0, c.code(), c.err());
+        assertTrue(c.out().contains("FAILURE_PERSISTS") && c.out().contains("MINIMAL CRITICAL SETS: [[partition-p-b1, partition-p-b2]]"), c.out());
+    }
+
+    @Test
+    void sessionCommandsReadFromStdinAndGoingLiveCreatesABranch() {
+        cli("run", "re", "--no-stop");
+        String script = String.join("\n", "goto violation", "why", "back 3", "world", "find kind=timer_fired node=b back", "watch b.volatile.role", "inflight", "timers",
+                "goto fault:partition-pb#1", "branch --heal-earlier 200 --quiet", "state b", "diff T0", "bogus", "quit", "");
+        R r = cliIn(script, "session", "T0");
+        assertEquals(0, r.code(), r.err());
+        assertTrue(r.out().contains("> goto violation") && r.out().contains("chain from fault:partition-pb#1"), r.out());
+        assertTrue(r.out().contains("VERDICT: FAILURE_DISAPPEARS") && r.out().contains("switched to T0.1"), r.out());
+        assertTrue(r.out().contains("b#12") && r.out().contains("\"BACKUP\" -> \"PRIMARY\""), r.out());
+        assertTrue(r.out().contains("error: unknown session command 'bogus'"));
+        assertTrue(r.out().contains("diff T0.1@") && r.out().contains(" vs T0@"), "after going live the session is on the branch: " + r.out());
+    }
+
+    @Test
+    void determinismAcrossFreshJvmLaunches() {
+        R r = cli("determinism", "re", "--seed", "42", "--jvm", "2");
+        assertEquals(0, r.code(), r.out() + r.err());
+        assertTrue(r.out().contains("IDENTICAL") && r.out().contains("fresh JVM launch 1") && r.out().contains("fresh JVM launch 2") && r.out().contains("DETERMINISTIC"), r.out());
+        assertEquals(3, r.out().lines().filter(l -> l.contains("hash")).count());
+        String[] hashes = r.out().lines().filter(l -> l.contains("hash ")).map(l -> l.replaceAll(".*hash ([0-9a-f]{64}).*", "$1")).toArray(String[]::new);
+        assertEquals(hashes[0], hashes[1]);
+        assertEquals(hashes[0], hashes[2]);
+        // a chaos plan too: the hash of a fault-injected run is stable across JVMs
+        R g = cli("determinism", "gossip", "--seed", "3", "--param", "nodes=4", "--param", "horizon=300", "--jvm", "1");
+        assertEquals(0, g.code(), g.out() + g.err());
+    }
+
+    @Test
+    void campaignFindsFailingChaosSeedsAndKeepsThemAsTimelines() {
+        R c = cli("campaign", "re", "--seeds", "1-40", "--chaos", "--param", "partition=off", "--threads", "3", "--keep", "--horizon", "900");
+        assertEquals(0, c.code(), c.err());
+        assertTrue(c.out().contains("40 runs"), c.out());
+        long bad = c.out().lines().filter(l -> l.startsWith("  seed ")).count();
+        assertTrue(bad >= 1, "a campaign over seeds finds a failing RE run: " + c.out());
+        assertEquals(bad, c.out().lines().filter(l -> l.startsWith("recorded T")).count());
+        // a kept failing run replays and explains itself
+        assertEquals(0, cli("verify", "T0").code());
+    }
+
+    @Test
+    void deleteOnlyLeafTimelines() {
+        cli("run", "re", "--no-stop");
+        cli("branch", "T0", "--heal-earlier", "200", "--quiet");
+        R d = cli("delete", "T0");
+        assertEquals(1, d.code());
+        assertTrue(d.err().contains("child timelines"));
+        assertEquals(0, cli("delete", "T0.1").code());
+        assertEquals(0, cli("delete", "T0").code());
+        assertEquals(1, cli("delete", "T0").code());
+    }
+
+    @Test
+    void theFlagshipDemoPassesEveryCheck() {
+        R r = cli("demo");
+        assertEquals(0, r.code(), r.out() + r.err());
+        assertTrue(r.out().contains("ALL PASSED"), r.out());
+        for (String ad : List.of("AD-1", "AD-2", "AD-3", "AD-4", "AD-5", "AD-6")) assertTrue(r.out().contains(ad + "  "), ad);
+        assertFalse(r.out().contains("[FAIL]"), r.out());
+        assertTrue(Files.exists(tmp.resolve("data/reports")));
+    }
+}
