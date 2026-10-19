@@ -1,10 +1,11 @@
 package chronos.cli;
 
-import chronos.model.Canon;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import chronos.model.*;
 import java.io.*;
+import java.util.Map;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.List;
@@ -206,6 +207,22 @@ class CliTest {
         R br = cli("branch", "T1", "--drop", "g0#5", "--compress");
         assertEquals(0, br.code(), br.err() + br.out());
         assertEquals(0, cli("verify", "T1.1").code());
+    }
+
+    @Test
+    void aNonLocalFaultPlanIsSaidSoInEveryReport() throws Exception {
+        Env env = new Env(tmp.resolve("data"));
+        FaultPlan plan = FaultPlan.of(FaultRule.probabilistic("any-drop", FaultRule.FaultAction.DROP, "*", "*", "*", 100, null));
+        env.record("re", 42, Map.of("partition", "off"), plan, Boolean.FALSE);
+        env.record("re", 42, Map.of("partition", "off"), FaultPlan.empty(), Boolean.FALSE);
+        String note = "fault rule(s) [any-drop] are flagged nonLocal: the locality law M8";
+        assertTrue(cli("show", "T0").out().contains("NOTE: " + note), "show");
+        assertFalse(cli("show", "T1").out().contains("nonLocal"), "a local plan carries no such note");
+        R cmp = cli("compare", "T0", "T1");
+        assertTrue(cmp.out().contains("WARNING: T0: " + note), cmp.out());
+        R rep = cli("report", "T0", "--against", "T1", "--out", tmp.resolve("r.html").toString());
+        assertEquals(0, rep.code(), rep.err());
+        assertTrue(Files.readString(tmp.resolve("r.html")).contains("flagged nonLocal"), "the HTML report says so, in the replay and in the comparison sections");
     }
 
     @Test

@@ -182,6 +182,7 @@ final class Cli {
         out.println("recorded " + id + ": " + scenario + (params.isEmpty() ? "" : " " + params) + " seed=" + seed + "  -> " + r.status() + ", " + r.eventCount() + " events, final virtual time "
                 + r.finalVirtualTime() + " ms");
         out.println("  log hash " + LogHash.of(store.events(id)) + "   stored under " + dataDir.resolve("timelines").resolve(id));
+        if (store.header(id).faultPlan().localityNote() != null) out.println("  NOTE: " + store.header(id).faultPlan().localityNote());
         if (!r.faultCoverage().isEmpty()) out.println("  fault coverage: " + r.faultCoverage() + (r.unfiredRules().isEmpty() ? "" : "   WARNING: rules that never fired: " + r.unfiredRules()));
         if (r.violated()) {
             out.println("  INVARIANT VIOLATED: " + r.firstViolationInvariant() + " at " + r.firstViolationEventId());
@@ -247,6 +248,7 @@ final class Cli {
         else if (a.has("diagram")) out.print(Exports.spaceTime(g, h.nodes()));
         else {
             out.println(tl + ": " + h.scenario() + " " + h.params() + " seed=" + h.seed() + " nodes=" + h.nodes() + (h.parentId() != null ? "  branch of " + h.parentId() + " at " + h.branchSeq() : ""));
+            if (h.faultPlan().localityNote() != null) out.println("  NOTE: " + h.faultPlan().localityNote());
             out.println("  " + (sum == null ? "RECORDING (unfinished)" : sum.status() + ", " + events.size() + " events, final virtual time " + sum.finalVirtualTime() + " ms") + "; graph: " + g.size() + " vertices, " + g.edgeCount() + " edges");
             int limit = (int) a.num("limit", 200);
             out.print(Exports.eventTable(events.subList(0, Math.min(limit, events.size())), h.nodes()));

@@ -40,6 +40,7 @@ public final class TimelineComparator {
         if (!ha.nodes().equals(hb.nodes())) throw new IllegalArgumentException("timelines have different node sets: " + ha.nodes() + " vs " + hb.nodes());
         List<String> warnings = new ArrayList<>();
         if (ha.seed() != hb.seed()) warnings.add("different seeds (" + ha.seed() + " vs " + hb.seed() + "): nearly everything differs from the first random draw");
+        for (TimelineHeader hh : List.of(ha, hb)) if (hh.faultPlan().localityNote() != null) warnings.add(hh.timelineId() + ": " + hh.faultPlan().localityNote());
         List<String> order = new ArrayList<>(ha.nodes());
         order.add(Event.ENV);
 

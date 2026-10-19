@@ -35,6 +35,12 @@ public record FaultPlan(List<FaultRule> rules) {
         return rules.stream().filter(r -> r.id().equals(id)).findFirst();
     }
 
+    /** The sentence a run's report must carry when the plan has nonLocal rules (D-13), or null if the locality law M8 applies. */
+    public String localityNote() {
+        List<String> ids = rules.stream().filter(FaultRule::nonLocal).map(FaultRule::id).toList();
+        return ids.isEmpty() ? null : "fault rule(s) " + ids + " are flagged nonLocal: the locality law M8 (an unaffected node behaves identically in a branch) does not apply to this run";
+    }
+
     /** True if some rule is nonLocal, which voids law M8 (locality) for the run; the run's report says so. */
     public boolean hasNonLocalRules() {
         return rules.stream().anyMatch(FaultRule::nonLocal);

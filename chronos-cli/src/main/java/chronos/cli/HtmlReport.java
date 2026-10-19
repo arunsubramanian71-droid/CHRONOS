@@ -68,6 +68,7 @@ final class HtmlReport {
                 .append("</b> events exactly (ids, kinds, times, Lamport and vector clocks, parents, payloads, state digests).</p><p>Log hash (SHA-256): <code>").append(esc(replay.logHash())).append("</code></p>");
         else sb.append("<p class=\"bad\">MISMATCH</p><pre>").append(esc(replay.violation().report())).append("</pre>");
         for (String w : replay.warnings()) sb.append("<p class=\"warn\">Warning: ").append(esc(w)).append("</p>");
+        if (h.faultPlan().localityNote() != null) sb.append("<p class=\"warn\">Note: ").append(esc(h.faultPlan().localityNote())).append("</p>");
         sb.append("<h3>Persistence</h3><ul>");
         sb.append("<li>format version ").append(h.formatVersion()).append(", code version ").append(esc(h.codeVersion())).append(", class fingerprint <code>").append(esc(String.valueOf(h.codeFingerprint()))).append("</code></li>");
         sb.append("<li>storage: <code>").append(esc(store.root().getFileName() + "/timelines/" + timeline)).append("</code>; segments ").append(esc(store.segments(timeline).stream().map(sg -> sg.timelineId() + " [" + sg.fromSeq() + ".." + sg.toSeq() + "]").collect(Collectors.joining(", ")))).append("</li>");
@@ -131,6 +132,7 @@ final class HtmlReport {
         if (div != null) {
             List<Event> bEvents = store.events(against);
             sb.append("<section><h2>Comparison: ").append(esc(timeline)).append(" (reference) vs ").append(esc(against)).append("</h2>");
+            for (String w : div.warnings()) sb.append("<p class=\"warn\">Warning: ").append(esc(w)).append("</p>");
             sb.append("<p>Shared prefix: <b>").append(div.sharedPrefix()).append("</b> events (identical by construction). After it: ").append(esc(div.counts().toString())).append("</p>");
             if (div.identical()) sb.append("<p class=\"good\">No divergence: the timelines are identical after their shared prefix.</p>");
             else {
