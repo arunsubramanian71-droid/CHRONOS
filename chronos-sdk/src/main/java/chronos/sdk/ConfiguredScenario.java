@@ -14,15 +14,22 @@ import java.util.TreeMap;
 public final class ConfiguredScenario implements Scenario {
     private final Scenario inner;
     private final Map<String, String> config;
+    private final String name;
 
     public ConfiguredScenario(Scenario inner, Map<String, String> extra) {
+        this(inner, extra, inner.name());
+    }
+
+    /** As above, under another name (the blind-debugging kit hides which application a case is built on). */
+    public ConfiguredScenario(Scenario inner, Map<String, String> extra, String name) {
         this.inner = inner;
+        this.name = name;
         Map<String, String> m = new TreeMap<>(inner.config());
         m.putAll(extra);
         this.config = Map.copyOf(m);
     }
 
-    @Override public String name() { return inner.name(); }
+    @Override public String name() { return name; }
     @Override public String version() { return inner.version(); }
     @Override public List<NodeSpec> nodes() { return inner.nodes(); }
     @Override public Map<String, String> config() { return config; }

@@ -177,4 +177,4 @@ are each exercised in `KnownAnswerTest`.
 | 14b comparator hardening | COMPLETE (concurrent roots, absorbed divergence, suspected nondeterminism, KA-4) |
 | 15a static HTML report | COMPLETE |
 | 16 benchmarks | COMPLETE (`docs/BENCHMARKS.md`: B1-B14, a 1,018,235-event run with memory profile, a 10,000-seed chaos soak, NFR-01 at full size); B11 (intervention search) needs the harness re-run to be listed in BENCHMARKS.md |
-| 17 documentation, demonstrations, evaluation | PARTIAL: README, status, traceability, deviations, benchmarks, viva guide, demo script, sample report, demo transcript and an evaluation on 800 unplanned chaos runs (`docs/EVALUATION.md`) are written; the **blind debugging protocol** (needs a second person) is NOT DONE |
+| 17 documentation, demonstrations, evaluation | PARTIAL: README, status, traceability, deviations, benchmarks, viva guide, demo script, sample report, demo transcript and an evaluation on 800 unplanned chaos runs (`docs/EVALUATION.md`) are written; the **blind debugging protocol** (needs a second person) is NOT DONE (the kit that supports it, `chronos blind`, is built and tested: `docs/BLIND_PROTOCOL.md`, `BlindKitTest`) |

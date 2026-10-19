@@ -48,6 +48,7 @@ final class Cli {
               serve [--port 8080] [--bind 127.0.0.1] [--seconds N]   live local viewer (read-only web page on the JDK HTTP server)
               reindex [timeline] [--check]       rebuild the derived index files from the log (--check: only report whether they load)
               (any branching command) --pinned    use the Pinned continuation policy instead of Continue (D-15)
+              blind prepare [--token HEX] | begin | answer --root RULE... [--notes TEXT] | grade     blind-debugging kit (docs/BLIND_PROTOCOL.md)
               local-replay <timeline> [node]      re-execute one node (or each node) alone from its recorded inputs and check its outputs (R5)
               search <timeline> [--max N] [--threads N] [--keep]   intervention search: which single changes to the causal past make the failure disappear
               campaign <scenario> --seeds A-B [--threads N] [--chaos] [--param k=v]... [--keep]
@@ -59,7 +60,7 @@ final class Cli {
     private final PrintStream out;
     private final PrintStream err;
     private final InputStream in;
-    private final DemoRegistry registry = new DemoRegistry();
+    private final BlindKit.Registry registry = new BlindKit.Registry();
     private Path dataDir;
     private TimelineStore store;
     private TimelineManager manager;
@@ -108,6 +109,7 @@ final class Cli {
             case "search" -> search(args);
             case "local-replay" -> localReplay(args);
             case "serve" -> serve(args);
+            case "blind" -> blind(args);
             case "reindex" -> {
                 for (String id : args.positionalCount() > 0 ? List.of(args.positional(0, "timeline")) : store.timelineIds()) {
                     String before = store.index(id).source();
@@ -687,6 +689,77 @@ final class Cli {
         return sb.toString();
     }
 
+    /** The blind-debugging kit (Section 25): prepare a case from a token, begin, answer, grade. See docs/BLIND_PROTOCOL.md. */
+    private int blind(Args a) {
+        String sub = a.positional(0, "prepare|begin|answer|grade");
+        Path marker = dataDir.resolve("blind.json");
+        switch (sub) {
+            case "prepare" -> {
+                long token = Long.parseUnsignedLong(a.get("token", Long.toHexString(System.nanoTime() ^ 0x5DEECE66DL)), 16);
+                BlindKit.Case c = BlindKit.caseFor(token);
+                extraFaults = new ArrayList<>(c.plan().rules());
+                RunResult r;
+                try {
+                    r = record("mystery", 42, Map.of("m", Long.toHexString(token)), "none", null, Boolean.FALSE, 25, null);
+                } finally {
+                    extraFaults = List.of();
+                }
+                if (!r.violated()) throw new CliException("internal error: the prepared case does not fail");
+                out.println("blind case prepared in " + dataDir + " as " + lastTimeline + ". Give the debugger ONLY this data directory.");
+                out.println("(the planted cause is kept out of this output: it is recomputed from the token " + Long.toHexString(token) + " by `blind grade`)");
+                return 0;
+            }
+            case "begin" -> {
+                try {
+                    Files.writeString(marker, Canon.json(Map.of("begin", System.currentTimeMillis())) + "\n");
+                } catch (IOException e) {
+                    throw new CliException("cannot write " + marker + ": " + e.getMessage());
+                }
+                out.println("timer started. Use only CHRONOS (inspect, branch, compare, search, causes, report ...) to find the cause, then: chronos blind answer --root RULE [--root RULE] --notes \"what was confusing\"");
+                return 0;
+            }
+            case "answer" -> {
+                try {
+                    Map<String, Object> m = new TreeMap<>(Files.exists(marker) ? Canon.parseMap(Files.readString(marker)) : Map.of());
+                    long now = System.currentTimeMillis();
+                    m.put("answer", new ArrayList<>(a.all("root")));
+                    m.put("notes", a.get("notes", ""));
+                    m.put("end", now);
+                    if (m.containsKey("begin")) m.put("seconds", (now - Canon.num(m.get("begin"))) / 1000);
+                    Files.writeString(marker, Canon.json(m) + "\n");
+                } catch (IOException e) {
+                    throw new CliException("cannot write " + marker + ": " + e.getMessage());
+                }
+                out.println("answer recorded. The preparer runs: chronos --data " + dataDir + " blind grade");
+                return 0;
+            }
+            case "grade" -> {
+                try {
+                    if (!Files.exists(marker)) throw new CliException("no answer recorded (run `blind answer` first)");
+                    Map<String, Object> m = new TreeMap<>(Canon.parseMap(Files.readString(marker)));
+                    if (!m.containsKey("answer")) throw new CliException("no answer recorded (run `blind answer` first)");
+                    TimelineHeader h = store.header("T0");
+                    long token = Long.parseUnsignedLong(h.params().get("m"), 16);
+                    BlindKit.Case c = BlindKit.caseFor(token);
+                    List<String> given = new ArrayList<>();
+                    for (Object o : Canon.list(m.get("answer"))) given.add((String) o);
+                    boolean ok = BlindKit.correct(c, given);
+                    out.println("planted cause: " + c.truth() + " (" + c.description() + ")");
+                    out.println("answer       : " + given + (m.containsKey("seconds") ? ", after " + m.get("seconds") + " s" : ""));
+                    out.println("notes        : " + m.get("notes"));
+                    out.println("DIAGNOSIS " + (ok ? "CORRECT" : "INCORRECT"));
+                    m.put("correct", ok);
+                    m.put("planted", new ArrayList<>(c.truth()));
+                    Files.writeString(marker, Canon.json(m) + "\n");
+                    return ok ? 0 : 1;
+                } catch (IOException e) {
+                    throw new CliException("cannot read " + marker + ": " + e.getMessage());
+                }
+            }
+            default -> throw new CliException("blind prepare|begin|answer|grade");
+        }
+    }
+
     private int serve(Args a) {
         String bind = a.get("bind", "127.0.0.1");
         int port = (int) a.num("port", 8080);
@@ -793,7 +866,7 @@ final class Cli {
         return dataDir;
     }
 
-    DemoRegistry registry() {
+    chronos.sdk.ScenarioRegistry registry() {
         return registry;
     }
 

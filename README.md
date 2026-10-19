@@ -11,7 +11,7 @@ It is implemented from the architecture contract `CHRONOS System Specification v
 Terms such as *Node API*, *event*, *step*, *timeline*, *intervention*, *OMISSION edge* and *first causal divergence* are used
 exactly as the specification defines them.
 
-> **Status in one paragraph.** All eight modules exist and build (verified on macOS and on Linux); 174 automated tests pass; the flagship
+> **Status in one paragraph.** All eight modules exist and build (verified on macOS and on Linux); 176 automated tests pass; the flagship
 > demonstration (acceptance demonstrations AD-1 to AD-6 and known-answer scenarios KA-0, KA-2, KA-3, KA-4 on the replicated store "RE")
 > runs from one command with 24 self-checks; the whole fault catalogue and the whole intervention catalogue of the specification are
 > implemented and tested. What is **not** done (for example the blind
@@ -123,6 +123,7 @@ Below, `chronos` stands for `java -jar chronos-cli/target/chronos.jar`.
 | Browse timelines in a browser: slider, diagram, world, why, compare (read-only live viewer) | `chronos serve --port 8080`, then open http://127.0.0.1:8080/ |
 | Store a recording gzip-compressed (opt-in, about 4.5x smaller; any command that records accepts it) | `chronos run re --compress` |
 | Check or rebuild the derived index files (`index/main.idx`) | `chronos reindex [T0] [--check]` |
+| Blind-debugging kit for a second person (prepare a hidden case, time and grade a diagnosis) | `chronos blind prepare\|begin\|answer\|grade` |
 | Re-run one node alone from its recorded inputs and check its outputs (R5) | `chronos local-replay T0 [b]` |
 | Which single change to the causal past makes the failure disappear? (intervention search) | `chronos search T0 [--max 64] [--keep]` |
 | Find a failing run by chaos (random fault plans, parallel) | `chronos campaign re --seeds 1-200 --chaos --param partition=off --keep` |
@@ -151,7 +152,7 @@ Measured results (and which targets of Section 8 were met or missed) are in [`do
 * `docs/DEVIATIONS.md`: where this implementation interprets, extends or departs from the specification, and why. Also the
   open questions Q1 and Q6.
 * `docs/USER_GUIDE.md` (a task-oriented walk-through with the tutorial application), `docs/ARCHITECTURE.md`, `docs/TEACHING_NOTES.md` (one note per component),
-  `docs/DEMO_SCRIPTS.md` (a short runnable script per subsystem, executed by a test), `docs/PORTABILITY.md` (macOS, Linux, Windows status).
+  `docs/DEMO_SCRIPTS.md` (a short runnable script per subsystem, executed by a test), `docs/PORTABILITY.md` (macOS, Linux, Windows status), `docs/BLIND_PROTOCOL.md` (the kit for the blind debugging protocol).
 * `docs/BENCHMARKS.md` (measured results), `docs/EVALUATION.md` (the experiment on unplanned failures and what it does not show),
   `docs/sample-report-T0-vs-T0.1.html`, `docs/demo-output.txt` (a real demo transcript), `docs/VIVA_GUIDE.md`.
 
