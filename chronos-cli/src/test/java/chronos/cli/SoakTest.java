@@ -60,7 +60,7 @@ class SoakTest {
                 if (!r.ok()) problems.add("replay: " + r.summary());
                 return problems;
             };
-            List<Campaign.Entry> res = Campaign.run(REG, sc.getKey(), sc.getValue(), 1, 150, 6, true, 600L, check);
+            List<Campaign.Entry> res = Campaign.run(REG, sc.getKey(), sc.getValue(), 1, Long.parseLong(System.getenv().getOrDefault("CHRONOS_SOAK_SEEDS", "150")), 6, true, 600L, check); // CHRONOS_SOAK_SEEDS=5000 for a long run
             for (Campaign.Entry e : res)
                 assertTrue(e.problems().isEmpty(), sc.getKey() + " seed " + e.seed() + " plan " + e.plan().toList() + ": " + e.problems());
             if (sc.getKey().equals("control")) assertTrue(res.stream().noneMatch(Campaign.Entry::violated));

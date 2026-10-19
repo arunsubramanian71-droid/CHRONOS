@@ -353,11 +353,31 @@ public final class TimelineStore implements LogReader {
     public Optional<WorldImage> checkpointAtOrBefore(String id, long seq) {
         TimelineHeader h = header(id);
         long lastOwn = lastOwnSeq(id, h);
-        long best = -1;
-        for (long s : ownCheckpointSeqs(id)) if (s <= seq && s <= lastOwn && s > best) best = s;
-        if (best >= 0) return Optional.of(readCheckpoint(id, best));
+        List<Long> candidates = new ArrayList<>();
+        for (long s : ownCheckpointSeqs(id)) if (s <= seq && s <= lastOwn) candidates.add(s);
+        candidates.sort(Comparator.reverseOrder());
+        for (long s : candidates) {
+            try {
+                return Optional.of(readCheckpoint(id, s));
+            } catch (CorruptLogException damaged) {
+                // a checkpoint is only a shortcut (the log can always be replayed from an earlier point): skip a damaged one, use the next older
+            }
+        }
         if (h.parentId() != null) return checkpointAtOrBefore(h.parentId(), Math.min(seq, h.branchSeq()));
         return Optional.empty();
+    }
+
+    /** Positions of this timeline's own checkpoint files that cannot be read (damaged); they are skipped, never used. */
+    public List<Long> damagedCheckpoints(String id) {
+        List<Long> out = new ArrayList<>();
+        for (long s : ownCheckpointSeqs(id)) {
+            try {
+                readCheckpoint(id, s);
+            } catch (CorruptLogException damaged) {
+                out.add(s);
+            }
+        }
+        return out;
     }
 
     private long lastOwnSeq(String id, TimelineHeader h) {

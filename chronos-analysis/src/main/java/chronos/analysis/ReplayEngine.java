@@ -161,6 +161,9 @@ public final class ReplayEngine {
                 while (true) {
                     while (ci < lineage.size() && engine.nextSeq() == lineage.get(ci).branchSeq() + 1 && target > lineage.get(ci).branchSeq()) {
                         TimelineHeader b = lineage.get(ci++);
+                        // a branch made at the same position as its own branch point has none of that parent's own events in its prefix,
+                        // so the parent's interventions (recorded after that position) are not part of its history
+                        if (ci < lineage.size() && lineage.get(ci).branchSeq() == b.branchSeq()) continue;
                         engine.setOptions(new RunOptions(b.horizon(), b.stopOnViolation(), 0));
                         engine.applyInterventions(b.interventions());
                     }

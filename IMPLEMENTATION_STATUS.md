@@ -67,7 +67,7 @@ Full matrix: `docs/TRACEABILITY.md`. The important ones:
 ## Deviations from the specification
 
 Interpretations, extensions, semantics for the later catalogue items and simplifications are recorded in `docs/DEVIATIONS.md`
-(DEV-01 to DEV-38). The ones a reviewer should look at first: **DEV-03** (OMISSION scope for partitions also requires the node to have
+(DEV-01 to DEV-42). The ones a reviewer should look at first: **DEV-03** (OMISSION scope for partitions also requires the node to have
 heard from the other side), **DEV-02** (digest parent ids exclude PROGRAM_ORDER), **DEV-11** (heal-enabled FAULT edge), **DEV-10**
 (AD-4/AD-5 branch point).
 
@@ -79,7 +79,13 @@ heard from the other side), **DEV-02** (digest parent ids exclude PROGRAM_ORDER)
 4. **Verifier false mismatch** on trailing silent steps (chaos soak) -> replay runs to the same end (DEV-13).
 5. **A checkpoint did not remember its run had stopped**, so a resumed replay ran past the recording (test of replay from every checkpoint of a stopped run) -> DEV-21.
 6. **Bad citizen could coincidentally replay** (1-in-2,400 clock collision, seen once) -> more entropy (1e-6).
-7. Wrong test assumptions were corrected after checking the actual semantics, not by loosening assertions.
+7. **Branch points inside the boot sequence** produced branches that did not continue their parent (`--remove-input` default; DEV-37).
+8. **M10 failed for `REMOVE_FAULT`** (primary root was the removed fault; roots of the branch outside the intervention's future): ghost rules, lane marks, tie-break (DEV-36).
+9. **Nested branches could not be replayed** when a checkpoint had been taken after a step that records nothing (found by the intervention fuzzer after 473 seeds): DEV-39.
+10. **Grandchild branches at the parent's own branch point replayed with the parent's interventions** (fuzzer, seed 5219): DEV-41.
+10b. **`SWAP_DELIVERIES` with the same message twice** produced duplicate ids (fuzzer, seed 654): DEV-40.
+11. The unplanned-failure evaluation exposed that **`why` cannot name a fault whose silence no timer noticed** (tutorial case, 0/100): the labelled possible-silence section (DEV-38).
+12. Wrong test assumptions were corrected after checking the actual semantics, not by loosening assertions.
 
 ## Known limitations and risks
 

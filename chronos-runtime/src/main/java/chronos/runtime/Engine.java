@@ -43,6 +43,10 @@ public final class Engine {
     private Ref envLast;
     private long time;
     private long stepCount;
+    // The virtual time and step count of the last event built. A step that records nothing (a fault that finds nothing to do, a held item)
+    // advances `time` and `stepCount` but leaves no trace in the log, so a world is identified by these two values, not by the live ones:
+    // restoring a checkpoint and replaying the prefix from the start must give the same world at a boundary.
+    private long lastEventTime, lastEventStep;
     private boolean booted;
     private boolean finished;
     private boolean stopRequested;
@@ -99,8 +103,8 @@ public final class Engine {
         FaultInjector fi = FaultInjector.restore(Canon.map(d.get("faults")));
         Engine e = new Engine(scenario, Canon.num(d.get("seed")), fi, opts, decisions, recorder);
         e.clocks.restore(Canon.map(d.get("clocks")));
-        e.time = Canon.num(d.get("time"));
-        e.stepCount = Canon.num(d.get("step"));
+        e.time = e.lastEventTime = Canon.num(d.get("time"));
+        e.stepCount = e.lastEventStep = Canon.num(d.get("step"));
         Map<String, Object> env = Canon.map(d.get("env"));
         e.envLast = env.get("last") == null ? null : Ref.fromMap(Canon.map(env.get("last")));
         for (Map.Entry<String, Object> en : Canon.map(env.get("counters")).entrySet()) e.envCounters.put(en.getKey(), Canon.num(en.getValue()));
@@ -182,6 +186,12 @@ public final class Engine {
      * node failure that ended it). Branching deliberately does not call this: going live from the end of a stopped timeline continues.
      */
     public void resumeStopState(WorldImage image) {
+        // a full verification must end exactly where the original run ended, including trailing steps that recorded nothing: take the
+        // live clock and step count back from the image (branching deliberately does not: it uses the image's normalized values)
+        if (image.data().containsKey("liveTime")) {
+            time = Canon.num(image.data().get("liveTime"));
+            stepCount = Canon.num(image.data().get("liveStep"));
+        }
         Object st = image.data().get("stopStatus");
         if (st != null) {
             stopRequested = true;
@@ -723,6 +733,8 @@ public final class Engine {
             ps.add(new Parent(l.ref().id(), l.kind()));
         }
         Stamp st = clocks.stamp(slotIdx, in);
+        lastEventTime = time;
+        lastEventStep = stepCount;
         return new Event(id, -1, "", nodeName, kind, time, st.lamport(), st.vector(), ps, payload, null, null, origin);
     }
 
@@ -1172,6 +1184,7 @@ public final class Engine {
             }
             case Intervention.SWAP_DELIVERIES -> {
                 String a = (String) p.get("a"), b = (String) p.get("b");
+                if (a.equals(b)) throw new IllegalArgumentException("intervention " + iv.id() + ": a message cannot be swapped with itself");
                 AgendaItem ia = agenda.find(i -> i.kind() == AgendaItem.Kind.DELIVERY && i.identity().equals(a));
                 AgendaItem ib = agenda.find(i -> i.kind() == AgendaItem.Kind.DELIVERY && i.identity().equals(b));
                 if (ia == null || ib == null) throw new IllegalArgumentException("intervention " + iv.id() + ": both messages must be in flight at the branch point to be swapped");
@@ -1203,8 +1216,12 @@ public final class Engine {
         Map<String, Object> d = new TreeMap<>();
         d.put("scenario", scenario.name());
         d.put("seed", seed);
-        d.put("time", time);
-        d.put("step", stepCount);
+        d.put("time", lastEventTime);
+        d.put("step", lastEventStep);
+        if (time != lastEventTime || stepCount != lastEventStep) { // only when steps that recorded nothing came after the last event
+            d.put("liveTime", time);
+            d.put("liveStep", stepCount);
+        }
         d.put("clocks", clocks.snapshot());
         Map<String, Object> env = new TreeMap<>();
         env.put("last", envLast == null ? null : envLast.toMap());

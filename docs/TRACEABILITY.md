@@ -61,7 +61,7 @@ Paths are relative to the module's `src/main/java/chronos/<package>/`.
 | 13 | Graph from a live stream or a stored log | `GraphSink`, `CausalGraph.build`; `CausalGraphTest` | COMPLETE (live sink not separately tested) |
 | 14 | Causal past/future, happens-before, concurrent, path | `CausalGraph`; `CausalGraphTest` | COMPLETE |
 | 15 | Vector vs reachability self-check | `CausalGraph.selfCheck`; `LawsTest.m3_m4`, `SoakTest` | COMPLETE |
-| 16 | Segmented log, format version, torn final record | store; `TimelineStoreTest`, `PersistenceTest` (kills a real process) | COMPLETE |
+| 16 | Segmented log, format version, torn final record | store; `CorruptionFuzzTest` (random byte damage: lossless prefix or refusal); `TimelineStoreTest`, `PersistenceTest` (kills a real process) | COMPLETE |
 | 17 | Catalogue: metadata, parent, branch point | `TimelineStore`; `TimelineStoreTest` | COMPLETE |
 | 18 | Indexes by position, node, kind, virtual time | `TimelineIndex`, `TimelineStore.index/rebuildIndex`, CLI `reindex`, bench B6b | COMPLETE (DEV-16): persisted in `index/main.idx`, validated on load, rebuilt from the log if missing or suspect; `TimelineStoreTest` (round trip incl. branches and 2,100 events, damage cases, NFR-04), `CliTest.reindex...`, `LawsTest.m11`; no byte-offset table, and loading them is not faster than rebuilding (measured) |
 | 18b | Log compression (cut line 6) | `TimelineStore.compressNewTimelines`, `TimelineWriter` (gzip), CLI `--compress`, B12/B6b | COMPLETE as opt-in segment compression (DEV-34); `TimelineStoreTest.compressed...`, `CliTest.compressedRecordings...`; per-vector delta compression NOT DONE (its spec trigger did not occur) |
@@ -173,7 +173,7 @@ are each exercised in `KnownAnswerTest`.
 | 10a, 11, 12a, 13a, 14a — Milestone S | COMPLETE |
 | 10b deeper time travel | COMPLETE (`run-to` breakpoints, `find`, `watch`, `diff`, `effects`, `concurrent-with`, `next-on`, `prev-on`; world reconstruction from the nearest checkpoint) |
 | 12b fault catalogue | COMPLETE (durable zone and restart, all faults, all triggers including "on node state", OMISSION scopes for crash and pause, sequential campaigns) |
-| 13b full counterfactuals | COMPLETE (whole intervention catalogue, parallel pool, campaigns on the pool); `DIFFERENT_FAILURE` simplified (DEV-08) |
+| 13b full counterfactuals | COMPLETE (whole intervention catalogue, parallel pool, campaigns on the pool); `DIFFERENT_FAILURE` simplified (DEV-08); `InterventionFuzzTest` applies random interventions at random boundaries of random chaos runs (default 70 seeds in the build; 2,500 and a further 9,000 seeds run once) and requires replayable branches, valid graphs, shared prefixes and nested branches |
 | 14b comparator hardening | COMPLETE (concurrent roots, absorbed divergence, suspected nondeterminism, KA-4) |
 | 15a static HTML report | COMPLETE |
 | 16 benchmarks | COMPLETE (`docs/BENCHMARKS.md`: B1-B14 including B11 and B6b, million-event runs at 10 and 20 nodes in memory and on disk, a 10,000-seed chaos soak, NFR-01 at full size) |

@@ -118,6 +118,7 @@ public record Intervention(String id, String type, Map<String, Object> params) {
     }
 
     public static Intervention swapDeliveries(String id, String a, String b) {
+        if (a.equals(b)) throw new IllegalArgumentException("intervention " + id + ": a message cannot be swapped with itself");
         return new Intervention(id, SWAP_DELIVERIES, Map.of("a", a, "b", b));
     }
 

@@ -180,6 +180,12 @@ class FaultCatalogueTest {
         assertReplays(env, tl);
     }
 
+    // ------------------------------------------------------------------------------------------------ regression: found by the intervention fuzzer
+    @Test
+    void aMessageCannotBeSwappedWithItself() {
+        assertThrows(IllegalArgumentException.class, () -> Intervention.swapDeliveries("s", "b#5", "b#5"));
+    }
+
     // ------------------------------------------------------------------------------------------------ on node state
     @Test
     void aRuleCanFireTheFirstTimeANodesStateSatisfiesAPredicate() {
