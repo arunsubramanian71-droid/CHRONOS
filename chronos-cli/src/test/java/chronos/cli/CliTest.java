@@ -147,6 +147,21 @@ class CliTest {
     }
 
     @Test
+    void knowledgeViewShowsWhatTheBackupHadNotHeardAndCutsAreConsistent() {
+        cli("run", "re", "--no-stop");
+        R k = cli("inspect", "T0", "--goto", "violation", "--knows");
+        assertEquals(0, k.code(), k.err());
+        assertTrue(k.out().contains("knowledge of ") && k.out().contains("believes:") && k.out().contains("actually:"), k.out());
+        R promo = cli("inspect", "T0", "--knows", "b#12");
+        assertTrue(promo.out().contains("about p: last heard") && promo.out().contains("of its events are unknown to b"), promo.out());
+        R c = cli("inspect", "T0", "--cut", "b#12,client#3");
+        assertTrue(c.out().contains("minimal consistent cut containing") && c.out().contains("consistent: true"), c.out());
+        R s = cliIn("knows b#12\ncut b#12\nquit\n", "session", "T0");
+        assertTrue(s.out().contains("knowledge of b") && s.out().contains("frontier"), s.out());
+        assertNotEquals(0, cli("inspect", "T0", "--cut", "nope#1").code());
+    }
+
+    @Test
     void searchRanksTheSingleChangesThatMakeTheFailureDisappear() {
         cli("run", "re");
         R r = cli("search", "T0", "--max", "40", "--threads", "2");

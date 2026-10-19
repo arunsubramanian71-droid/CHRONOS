@@ -81,6 +81,8 @@ Paths are relative to the module's `src/main/java/chronos/<package>/`.
 | 36 | Parallel isolated counterfactuals | `CounterfactualEngine.runAll`; `LawsTest.m12` | COMPLETE |
 | 37 | Seed campaign | `Campaign`, CLI `campaign`; `CliTest.campaign...` | COMPLETE |
 | 38 | Intervention search over the causal past | `InterventionSearch` (analysis), CLI `search`, bench B11; `findCriticalFaultSets` for rule combinations (DEV-14) | SIMPLIFIED (Stretch): single-change but-for search over message drops, scripted-input removals and fault-rule removals in the causal past of the first violation (DEV-30); `KnownAnswerTest.interventionSearch_*`, `CliTest.searchRanks...` |
+| 38b | Consistent cuts (Stretch) | `CausalGraph.minimalCut/isConsistentCut/inconsistencies/cutFromFrontier/frontier`, CLI `inspect --cut`, session `cut` | COMPLETE (DEV-31); `CausalGraphTest.consistentCutsAreClosedUnderCausation`, `CliTest.knowledgeView...` |
+| 38c | Knowledge view (Could) | `TimeTravelSession.knowledge/knowledgeText`, CLI `inspect --knows`, session `knows` | SIMPLIFIED (DEV-31: knowledge = causal past; states are log reconstructions); `CliTest.knowledgeViewShowsWhatTheBackupHadNotHeard...` |
 | 39, 40 | Align by identity; classify; first local divergence | `TimelineComparator`; `ComparatorTest` | COMPLETE |
 | 41, 42 | Causal roots; first causal divergence; explanation path | `TimelineComparator`; `AcceptanceTest.ad5`, `ComparatorTest` | COMPLETE |
 | 43 | Flag suspected application nondeterminism | `TimelineComparator.classifyLocal`; `ComparatorTest.anOutputDifference...` | COMPLETE |

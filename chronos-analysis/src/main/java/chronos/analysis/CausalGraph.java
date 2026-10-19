@@ -268,6 +268,53 @@ public final class CausalGraph {
         return best;
     }
 
+    /**
+     * The smallest consistent cut containing the given events: their causal past together with themselves. A cut is a set of
+     * events that could have been observed as one global snapshot, because nothing in it depends on anything outside it.
+     */
+    public BitSet minimalCut(Collection<Integer> members) {
+        BitSet cut = new BitSet(events.size());
+        Deque<Integer> stack = new ArrayDeque<>();
+        for (int m : members) if (!cut.get(m)) { cut.set(m); stack.push(m); }
+        while (!stack.isEmpty()) {
+            int v = stack.pop();
+            for (int i = parentStart[v]; i < parentStart[v + 1]; i++) {
+                int p = parentTo[i];
+                if (!cut.get(p)) { cut.set(p); stack.push(p); }
+            }
+        }
+        return cut;
+    }
+
+    /** A cut is consistent when it is closed under "caused by": no member has a parent outside the cut. */
+    public boolean isConsistentCut(BitSet cut) {
+        return inconsistencies(cut, 1).isEmpty();
+    }
+
+    /** Up to {@code limit} pairs {member, missing parent} that make a cut inconsistent (a received message whose send is outside, ...). */
+    public List<int[]> inconsistencies(BitSet cut, int limit) {
+        List<int[]> out = new ArrayList<>();
+        for (int v = cut.nextSetBit(0); v >= 0 && out.size() < limit; v = cut.nextSetBit(v + 1))
+            for (int i = parentStart[v]; i < parentStart[v + 1] && out.size() < limit; i++)
+                if (!cut.get(parentTo[i])) out.add(new int[]{v, parentTo[i]});
+        return out;
+    }
+
+    /** The cut that contains, for each named node, its events up to and including the given position (a "frontier" of local prefixes). */
+    public BitSet cutFromFrontier(Map<String, Integer> lastPositionPerNode) {
+        BitSet cut = new BitSet(events.size());
+        for (Map.Entry<String, Integer> en : lastPositionPerNode.entrySet())
+            for (int p : lane(en.getKey())) if (p <= en.getValue()) cut.set(p);
+        return cut;
+    }
+
+    /** For each node (and env), the position of its last event in the cut; nodes with no event in the cut are absent. */
+    public Map<String, Integer> frontier(BitSet cut) {
+        Map<String, Integer> m = new TreeMap<>();
+        for (int v = cut.nextSetBit(0); v >= 0; v = cut.nextSetBit(v + 1)) m.put(events.get(v).nodeId(), v);
+        return m;
+    }
+
     /** Positions of one node's events, in order. */
     public int[] lane(String node) {
         return events.stream().filter(e -> e.nodeId().equals(node)).mapToInt(e -> (int) e.seq()).toArray();

@@ -160,6 +160,66 @@ public final class TimeTravelSession {
         return state;
     }
 
+    /** What one node had heard about another as of an event: the last event of that node in the causal past, and what came after. */
+    public record Known(String node, Event lastHeard, long ageMillis, long unheardEvents, Map<String, Object> stateAsHeard, Map<String, Object> actualState) {
+        public boolean stale() { return unheardEvents > 0; }
+    }
+
+    /**
+     * The knowledge view (Could): at an event, what each node had heard about each other node. A node can only know what is in the
+     * causal past of its current event, so this is the last event of each other node in that past, how long ago that was in virtual
+     * time, how many of that node's events at or before the cursor it has NOT heard about, and the state that node had as of the
+     * event the viewer last heard (next to its actual state). It makes split brain visible: b believes p is still primary
+     * because it has not heard from p since the partition.
+     */
+    public List<Known> knowledge(String eventId) {
+        int at = resolve(eventId);
+        Event e = events.get(at);
+        BitSet past = new BitSet();
+        for (int p : graph.causalPast(at)) past.set(p);
+        past.set(at);
+        long boundary = at;
+        List<Known> out = new ArrayList<>();
+        for (String n : timelineHeaderNodes()) {
+            if (n.equals(e.nodeId())) continue;
+            int[] lane = index.positionsOfNode(n);
+            int last = -1;
+            long unheard = 0;
+            for (int p : lane) {
+                if (p > at) break;
+                if (past.get(p)) last = p;
+                else unheard++;
+            }
+            // events of that node after the last one heard that are at or before the cursor: counted above only if not in the past
+            Map<String, Object> actual = stateOf(n, boundary);
+            if (last < 0) {
+                out.add(new Known(n, null, -1, unheard, Map.of(), actual));
+            } else {
+                Event lh = events.get(last);
+                out.add(new Known(n, lh, e.virtualTime() - lh.virtualTime(), unheard, stateOf(n, last), actual));
+            }
+        }
+        return out;
+    }
+
+    public String knowledgeText(String eventId) {
+        int at = resolve(eventId);
+        Event e = events.get(at);
+        StringBuilder sb = new StringBuilder();
+        sb.append("knowledge of ").append(e.nodeId()).append(" at ").append(e.eventId()).append(" (t=").append(e.virtualTime()).append(")\n");
+        for (Known k : knowledge(eventId)) {
+            sb.append("  about ").append(k.node()).append(": ");
+            if (k.lastHeard() == null) sb.append("has never heard from it");
+            else sb.append("last heard ").append(k.lastHeard().eventId()).append(" at t=").append(k.lastHeard().virtualTime()).append(" (").append(k.ageMillis()).append(" ms ago)");
+            sb.append(k.stale() ? "; " + k.unheardEvents() + " of its events are unknown to " + e.nodeId() : "; fully up to date").append('\n');
+            if (k.stale() || k.lastHeard() == null) {
+                sb.append("      believes: ").append(Canon.json(k.stateAsHeard())).append('\n');
+                sb.append("      actually: ").append(Canon.json(k.actualState())).append('\n');
+            }
+        }
+        return sb.toString();
+    }
+
     /** Logical clocks at the cursor: each slot's last event at or before it. */
     public Map<String, Stamp> clocks() {
         Map<String, Stamp> m = new LinkedHashMap<>();

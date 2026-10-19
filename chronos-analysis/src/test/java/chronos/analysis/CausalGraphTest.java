@@ -29,6 +29,29 @@ class CausalGraphTest {
     }
 
     @Test
+    void consistentCutsAreClosedUnderCausation() {
+        CausalGraph g = pingPong();
+        int a1 = g.pos("A#1"), a2 = g.pos("A#2"), b1 = g.pos("B#1"), b2 = g.pos("B#2"), b3 = g.pos("B#3"), a3 = g.pos("A#3");
+        // the minimal cut of B's delivery is its causal past plus itself: A's start and send, B's start, the delivery
+        BitSet cut = g.minimalCut(List.of(b2));
+        assertEquals(List.of(a1, b1, a2, b2), cut.stream().boxed().toList());
+        assertTrue(g.isConsistentCut(cut));
+        assertEquals(Map.of("A", a2, "B", b2), g.frontier(cut));
+        // a frontier that includes B's delivery but stops A before the send is NOT a consistent cut: the message "from the future"
+        BitSet bad = g.cutFromFrontier(Map.of("A", a1, "B", b2));
+        assertFalse(g.isConsistentCut(bad));
+        List<int[]> why = g.inconsistencies(bad, 5);
+        assertTrue(why.stream().anyMatch(x -> x[0] == b2 && x[1] == a2), "the delivery is in the cut but its send is not");
+        // every prefix of the whole log is consistent, and so is the minimal cut of any set of events
+        BitSet all = new BitSet();
+        all.set(0, g.size());
+        assertTrue(g.isConsistentCut(all));
+        for (int i = 0; i < g.size(); i++) assertTrue(g.isConsistentCut(g.minimalCut(List.of(i, g.size() - 1 - i))));
+        assertEquals(g.causalPast(a3).length + 1, g.minimalCut(List.of(a3)).cardinality());
+        assertTrue(g.minimalCut(List.of(b3)).get(a2));
+    }
+
+    @Test
     void edgesAndQueriesOnThePingPongGraph() {
         CausalGraph g = pingPong();
         assertEquals(6, g.size());

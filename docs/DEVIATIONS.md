@@ -54,6 +54,7 @@ D-01 to D-22 "Approved" but D-23 to D-26 "New in v0.2". All four were implemente
 | DEV-28 | **Lengthening a partition** (`SHIFT_HEAL` with a positive shift): the extra drops get a FAULT edge from the intervention and its origin. A branch root can remain that is not in the intervention's causal future: the target node's *later* events differ because earlier deliveries were dropped (an input difference). `LawsTest`/`FaultCatalogueTest` assert that every such root is either in the future or explained by a drop the intervention caused. |
 | DEV-29 | **CONFIG_PATCH** and **RESEED_STREAM** change behaviour from the branch point on without an edge from the intervention to the events that read the new value (the engine cannot know which handler reads what); the comparator therefore reports the changed events as roots in the branch (all other node events follow from them by taint). |
 | DEV-30 | **Intervention search (FR-38)** is a bounded, single-change but-for search: suspects are the message sends whose delivery is in the causal past (tried as DROP), scripted client inputs (REMOVE_INPUT) and fault rules (REMOVE_FAULT) in the causal past of the first violation, capped at 64 (those causally closest are kept). It cannot find a cause that needs two changes (KA-4: use `chronos causes`) and does not propose delays, reorderings or other interventions. Every finding is a real counterfactual branch, not an estimate. |
+| DEV-31 | **Consistent cuts and the knowledge view.** A cut is consistent when it is closed under every parent edge (PROGRAM_ORDER, STEP_EFFECT, MESSAGE, TIMER, FAULT, WITNESS, OMISSION), which equals closure under happens-before (the graph self-check). The knowledge view defines "what A has heard about B at event e" as B's last event in the causal past of e; the state it prints as "believes" is B's recorded state as of that event, which is a reconstruction from the log, not a value any node stored. |
 
 ## Simplifications (SIMPLIFIED in the traceability matrix)
 
@@ -69,7 +70,7 @@ D-01 to D-22 "Approved" but D-23 to D-26 "New in v0.2". All four were implemente
 ## Not implemented (NOT IMPLEMENTED)
 
 The Pinned continuation policy (deferred by D-15); node-local replay R5 (Stretch);
-consistent cuts (Stretch); the live local viewer FR-50 (Stretch, D-18); the knowledge view (Could); log compression (cut line);
+the live local viewer FR-50 (Stretch, D-18); log compression (cut line);
 persisted index files; the blind debugging protocol of Phase 17 (it needs a second person); verification on **Windows**.
 (macOS and Linux were verified; see `IMPLEMENTATION_STATUS.md`.)
 

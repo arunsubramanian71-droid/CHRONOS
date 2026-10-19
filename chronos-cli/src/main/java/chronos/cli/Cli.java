@@ -261,11 +261,13 @@ final class Cli {
             out.println(ef.size() + " events could have been influenced by " + a.get("effects") + ":");
             ef.stream().limit(40).forEach(e -> out.println("  " + e.eventId() + " " + Exports.describe(e, s.graph())));
         }
+        if (a.has("knows")) out.print(s.knowledgeText(a.get("knows").isEmpty() ? null : a.get("knows")));
+        if (a.has("cut")) out.print(cutText(s.graph(), a.get("cut")));
         if (a.has("concurrent")) {
             List<Event> c = s.concurrentWith(a.get("concurrent"));
             out.println(c.size() + " events are concurrent with " + a.get("concurrent") + " (no causal relation)");
         }
-        if (!(a.has("goto") || a.has("back") || a.has("step") || a.has("state") || a.has("world") || a.has("inflight") || a.has("timers") || a.has("why") || a.has("effects") || a.has("concurrent")))
+        if (!(a.has("goto") || a.has("back") || a.has("step") || a.has("state") || a.has("world") || a.has("inflight") || a.has("timers") || a.has("why") || a.has("effects") || a.has("concurrent") || a.has("knows") || a.has("cut")))
             out.print(s.world());
         return 0;
     }
@@ -312,7 +314,7 @@ final class Cli {
         String arg = t.length > 1 ? t[1] : null;
         switch (c) {
             case "help" -> out.println("  goto <seq|event|violation>  step [n]  back [n]  next-on <node>  prev-on <node>  find <kind=K|node=N|text=S|time=MS|violation> [back]\n"
-                    + "  state <node>  world  inflight  timers  why [event]  effects [event]  concurrent-with [event]  watch <node.zone.field>\n"
+                    + "  state <node>  world  inflight  timers  why [event]  effects [event]  concurrent-with [event]  knows [event]  cut <event>[,<event>...]  watch <node.zone.field>\n"
                     + "  diff <timeline>  run-to <find terms>  branch <intervention options as in 'chronos branch'>  quit");
             case "goto" -> goTo(s, need(arg, "goto <seq|event|violation>"));
             case "step" -> printEvent(s, s.step(arg == null ? 1 : Integer.parseInt(arg)));
@@ -332,6 +334,8 @@ final class Cli {
             case "timers" -> s.timers().forEach(m -> out.println("  " + m.timerId() + " " + m.name() + " on " + m.node() + " due " + m.dueAt()));
             case "why" -> out.print(indent(s.why(arg), "  "));
             case "effects" -> s.effects(arg).stream().limit(30).forEach(e -> out.println("  " + e.eventId() + " " + Exports.describe(e, s.graph())));
+            case "knows" -> out.print(indent(s.knowledgeText(arg), "  "));
+            case "cut" -> out.print(indent(cutText(s.graph(), arg), "  "));
             case "concurrent-with" -> out.println("  " + s.concurrentWith(arg).size() + " concurrent events");
             case "watch" -> {
                 String q = need(arg, "watch <node.zone.field>");
@@ -620,6 +624,24 @@ final class Cli {
         for (Map.Entry<Set<String>, Verdict> e : cs.tried().entrySet()) out.println("  remove " + e.getKey() + " -> " + e.getValue());
         out.println(cs.minimalCriticalSets().isEmpty() ? "no combination of up to " + a.num("max-size", 2) + " rules is critical" : "MINIMAL CRITICAL SETS: " + cs.minimalCriticalSets());
         return 0;
+    }
+
+    /** The minimal consistent cut containing the given comma-separated events: per-node frontier, size, and a consistency check. */
+    static String cutText(CausalGraph g, String arg) {
+        if (arg == null || arg.isBlank()) throw new CliException("cut <event>[,<event>...]");
+        List<Integer> members = new ArrayList<>();
+        for (String id : arg.split("[, ]+")) {
+            int p = g.pos(id);
+            if (p < 0) throw new CliException("no event " + id);
+            members.add(p);
+        }
+        BitSet cut = g.minimalCut(members);
+        StringBuilder sb = new StringBuilder();
+        sb.append("minimal consistent cut containing ").append(arg).append(": ").append(cut.cardinality()).append(" of ").append(g.size()).append(" events\n");
+        sb.append("  frontier (last event per lane):\n");
+        for (Map.Entry<String, Integer> en : g.frontier(cut).entrySet()) sb.append("    ").append(en.getKey()).append(": ").append(g.event(en.getValue()).eventId()).append(" at t=").append(g.event(en.getValue()).virtualTime()).append('\n');
+        sb.append("  consistent: ").append(g.isConsistentCut(cut)).append('\n');
+        return sb.toString();
     }
 
     private int search(Args a) {
