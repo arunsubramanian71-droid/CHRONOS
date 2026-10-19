@@ -15,6 +15,7 @@ final class TestRegistry implements ScenarioRegistry {
         List<String> l = new ArrayList<>(demo.names());
         l.add("twopairs");
         l.add("clocky");
+        l.add("chain");
         return l;
     }
 
@@ -22,6 +23,7 @@ final class TestRegistry implements ScenarioRegistry {
     public Scenario create(String name, Map<String, String> params) {
         if (name.equals("twopairs")) return new TwoPairs();
         if (name.equals("clocky")) return new Clocky();
+        if (name.equals("chain")) return new Chain();
         return demo.create(name, params);
     }
 
@@ -35,6 +37,26 @@ final class TestRegistry implements ScenarioRegistry {
                     new NodeSpec("b1", () -> new Pinger("b2")), new NodeSpec("b2", () -> new Pinger("b1")));
         }
         public long latencyJitter() { return 6; }
+    }
+
+    /** a sends to b at start; b forwards to c; c keeps count. Constant latency 10: x arrives at 10, y at 20. The Pinned-policy testbed. */
+    static final class Chain implements Scenario {
+        public String name() { return "chain"; }
+        public long defaultHorizon() { return 200; }
+        public boolean stopOnViolation() { return false; }
+        public List<NodeSpec> nodes() { return List.of(new NodeSpec("a", Source::new), new NodeSpec("b", Relay::new), new NodeSpec("c", Sink::new)); }
+    }
+
+    static final class Source implements Node {
+        public void onStart(NodeContext c) { c.send("b", "x", Map.of()); }
+    }
+
+    static final class Relay implements Node {
+        public void onMessage(NodeContext c, Message m) { c.send("c", "y", Map.of("at", c.now())); }
+    }
+
+    static final class Sink implements Node {
+        public void onMessage(NodeContext c, Message m) { c.state().put("received", c.state().getLong("received", 0) + 1); }
     }
 
     static final class Pinger implements Node {

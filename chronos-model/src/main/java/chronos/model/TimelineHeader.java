@@ -22,6 +22,21 @@ public record TimelineHeader(String timelineId, String parentId, long branchSeq,
         return parentId == null;
     }
 
+    /** The reserved parameter that records a branch's continuation policy; absent means Continue (D-15). */
+    public static final String CONTINUATION_PARAM = "chronos.continuation";
+
+    public TimelineHeader withParam(String key, String value) {
+        Map<String, String> p = new TreeMap<>(params);
+        p.put(key, value);
+        return new TimelineHeader(timelineId, parentId, branchSeq, scenario, p, seed, nodes, faultPlan, interventions, horizon,
+                stopOnViolation, formatVersion, codeVersion, codeFingerprint, label);
+    }
+
+    /** True if this timeline was branched with the Pinned continuation policy. */
+    public boolean pinned() {
+        return "pinned".equals(params.get(CONTINUATION_PARAM));
+    }
+
     public TimelineHeader asBranch(String id, String parent, long branchAt, List<Intervention> ivs, long newHorizon, String newLabel) {
         return new TimelineHeader(id, parent, branchAt, scenario, params, seed, nodes, faultPlan, ivs, newHorizon,
                 stopOnViolation, formatVersion, codeVersion, codeFingerprint, newLabel);

@@ -25,7 +25,7 @@ public final class CounterfactualEngine {
 
     public record Report(Verdict verdict, String baseline, String timelineId, long branchPoint, List<Intervention> interventions,
                          DivergenceReport divergence, String baselineFailure, String branchFailure, int affectedEvents, String explanation,
-                         boolean synthetic) {
+                         boolean synthetic, boolean pinned) {
         public String text() {
             StringBuilder sb = new StringBuilder();
             sb.append("COUNTERFACTUAL on ").append(baseline).append(" at position ").append(branchPoint).append(" -> new timeline ").append(timelineId).append('\n');
@@ -35,6 +35,7 @@ public final class CounterfactualEngine {
             sb.append("  VERDICT: ").append(verdict).append('\n');
             sb.append("  ").append(explanation).append('\n');
             sb.append("  events in the causal future of the intervention: ").append(affectedEvents).append('\n');
+            if (pinned) sb.append("  continuation policy: Pinned (messages the baseline also sent keep their original delivery instants where that is still possible)\n");
             if (synthetic) sb.append("  NOTE: this timeline is synthetic (it contains a state edit that no real execution could produce)\n");
             return sb.toString();
         }
@@ -127,7 +128,7 @@ public final class CounterfactualEngine {
             if (iv >= 0) affected = g.causalFuture(iv).length;
         }
         return new Report(verdict, baseline, child, br.branchSeq(), q.interventions(), div, baseFail ? bInv + " at " + bv.eventId() + " (t=" + bv.virtualTime() + ")" : null,
-                childFail ? cInv + " at " + cv.eventId() + " (t=" + cv.virtualTime() + ")" : null, affected, why, manager.isSynthetic(child));
+                childFail ? cInv + " at " + cv.eventId() + " (t=" + cv.virtualTime() + ")" : null, affected, why, manager.isSynthetic(child), store.header(child).pinned());
     }
 
     private static Event byId(List<Event> es, String id) {

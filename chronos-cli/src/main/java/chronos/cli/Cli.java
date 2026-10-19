@@ -47,6 +47,7 @@ final class Cli {
               causes <timeline> [--max-size K] [--threads N]    which fault rules are critical (combinations)
               serve [--port 8080] [--bind 127.0.0.1] [--seconds N]   live local viewer (read-only web page on the JDK HTTP server)
               reindex [timeline] [--check]       rebuild the derived index files from the log (--check: only report whether they load)
+              (any branching command) --pinned    use the Pinned continuation policy instead of Continue (D-15)
               local-replay <timeline> [node]      re-execute one node (or each node) alone from its recorded inputs and check its outputs (R5)
               search <timeline> [--max N] [--threads N] [--keep]   intervention search: which single changes to the causal past make the failure disappear
               campaign <scenario> --seeds A-B [--threads N] [--chaos] [--param k=v]... [--keep]
@@ -87,7 +88,7 @@ final class Cli {
         dataDir = Path.of(dataOpt != null ? dataOpt : System.getenv().getOrDefault("CHRONOS_DATA", "chronos-data"));
         if (cmd.equals("scenarios")) return scenarios();
         store = new TimelineStore(dataDir).compressNewTimelines(args.has("compress"));
-        manager = new TimelineManager(store, registry);
+        manager = new TimelineManager(store, registry).withPinnedContinuation(args.has("pinned"));
         return switch (cmd) {
             case "run" -> run(args);
             case "ls" -> {

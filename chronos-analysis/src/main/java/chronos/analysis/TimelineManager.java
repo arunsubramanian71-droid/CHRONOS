@@ -25,6 +25,7 @@ public final class TimelineManager {
     private final ReplayEngine replay;
     private final Set<String> reserved = new TreeSet<>();
     private long checkpointInterval = RunOptions.DEFAULT_CHECKPOINT_INTERVAL;
+    private boolean pinned;
 
     public TimelineManager(TimelineStore store, ScenarioRegistry registry) {
         this.store = store;
@@ -36,6 +37,12 @@ public final class TimelineManager {
     public Scenario scenarioOf(String timelineId) {
         TimelineHeader h = store.header(timelineId);
         return registry.create(h.scenario(), h.params());
+    }
+
+    /** Branches made from now on use the Pinned continuation policy (D-15, Stretch) instead of Continue. It is recorded in the branch's header. */
+    public TimelineManager withPinnedContinuation(boolean on) {
+        this.pinned = on;
+        return this;
     }
 
     public TimelineManager withCheckpointInterval(long k) {
@@ -101,11 +108,13 @@ public final class TimelineManager {
         Scenario scenario = w.scenario();
         long h = horizon != null ? horizon : parentHeader.horizon();
         TimelineHeader child = parentHeader.asBranch(childId, parentId, p, ivs, h, label);
+        if (pinned) child = child.withParam(TimelineHeader.CONTINUATION_PARAM, "pinned");
         WorldImage atBranchPoint = engine.captureImage();
         TimelineWriter writer = store.openWriter(child);
         try {
             writer.checkpoint(atBranchPoint); // a checkpoint is stored at every branch point (Section 17 rule 5)
             DecisionSource policy = new RecordDecisionSource(scenario, child.seed());
+            if (pinned) policy = new PinnedPolicy(policy, store.events(parentId));
             DecisionSource branchSource = new BranchDecisionSource(new ReplayDecisionSource(store.events(parentId), policy), policy, p, engine::nextSeq);
             engine.recorder().switchTo(childId, List.of(writer));
             engine.setDecisionSource(branchSource);
