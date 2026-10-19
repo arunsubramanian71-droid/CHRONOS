@@ -11,7 +11,7 @@ It is implemented from the architecture contract `CHRONOS System Specification v
 Terms such as *Node API*, *event*, *step*, *timeline*, *intervention*, *OMISSION edge* and *first causal divergence* are used
 exactly as the specification defines them.
 
-> **Status in one paragraph.** All eight modules exist and build (verified on macOS and on Linux); 177 automated tests pass; the flagship
+> **Status in one paragraph.** All eight modules exist and build (verified on macOS and on Linux); 179 automated tests pass; the flagship
 > demonstration (acceptance demonstrations AD-1 to AD-6 and known-answer scenarios KA-0, KA-2, KA-3, KA-4 on the replicated store "RE")
 > runs from one command with 24 self-checks; the whole fault catalogue and the whole intervention catalogue of the specification are
 > implemented and tested. What is **not** done (for example the blind
