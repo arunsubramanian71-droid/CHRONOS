@@ -116,10 +116,16 @@ public final class TimeTravelSession {
 
     /** The last position of a completed step at or before the cursor, or -1. */
     public long completedBoundary() {
+        int lo = 0, hi = groupEnds.size() - 1;
         long best = -1;
-        for (long e : groupEnds) {
-            if (e <= cursor) best = e;
-            else break;
+        while (lo <= hi) {
+            int mid = (lo + hi) >>> 1;
+            if (groupEnds.get(mid) <= cursor) {
+                best = groupEnds.get(mid);
+                lo = mid + 1;
+            } else {
+                hi = mid - 1;
+            }
         }
         return best;
     }
@@ -176,16 +182,39 @@ public final class TimeTravelSession {
     /** A timer that is set but has not fired or been cancelled at the cursor. */
     public record PendingTimer(String timerId, String node, String name, long dueAt) {}
 
+    /**
+     * Messages in flight at the cursor. Reconstruction starts from the nearest checkpoint at or before the cursor (Section 14), whose
+     * agenda lists the pending deliveries, and folds only the events after it; without a checkpoint it folds the log from the start.
+     */
     public List<InFlight> inflight() {
+        return inflight(true);
+    }
+
+    List<InFlight> inflight(boolean useCheckpoint) {
         Map<String, Integer> copies = new LinkedHashMap<>();
-        Map<String, Event> sends = new HashMap<>();
+        Map<String, InFlight> info = new HashMap<>();
         Map<String, Long> delay = new HashMap<>();
-        for (int i = 0; i <= cursor; i++) {
+        int from = 0;
+        WorldImage img = useCheckpoint ? log.checkpointAtOrBefore(timelineId, cursor).orElse(null) : null;
+        if (img != null) {
+            from = (int) img.seq() + 1;
+            for (Object o : Canon.list(img.data().get("agenda"))) {
+                Map<String, Object> item = Canon.map(o);
+                if (!"DELIVERY".equals(item.get("kind"))) continue;
+                Map<String, Object> d = Canon.map(item.get("data"));
+                String id = (String) d.get("messageId");
+                copies.merge(id, 1, Integer::sum);
+                info.putIfAbsent(id, new InFlight(id, (String) d.get("from"), (String) d.get("to"), (String) d.get("type"), Canon.num(d.get("sentAt")), Canon.num(item.get("due")), 1));
+            }
+        }
+        for (int i = from; i <= cursor; i++) {
             Event e = events.get(i);
             switch (e.kind()) {
                 case MESSAGE_SENT -> {
-                    sends.put(e.eventId(), e);
                     copies.put(e.eventId(), 1);
+                    info.put(e.eventId(), new InFlight(e.eventId(), e.nodeId(), (String) e.payload().get("to"), (String) e.payload().get("type"), e.virtualTime(),
+                            Canon.num(e.payload().get("deliverAt")), 1));
+                    delay.remove(e.eventId());
                 }
                 case MESSAGE_DUPLICATED -> copies.merge((String) e.payload().get("messageId"), 1, Integer::sum);
                 case FAULT_INJECTED -> {
@@ -201,16 +230,30 @@ public final class TimeTravelSession {
         List<InFlight> out = new ArrayList<>();
         for (Map.Entry<String, Integer> en : copies.entrySet()) {
             if (en.getValue() <= 0) continue;
-            Event s = sends.get(en.getKey());
-            out.add(new InFlight(s.eventId(), s.nodeId(), (String) s.payload().get("to"), (String) s.payload().get("type"), s.virtualTime(),
-                    Canon.num(s.payload().get("deliverAt")) + delay.getOrDefault(s.eventId(), 0L), en.getValue()));
+            InFlight m = info.get(en.getKey());
+            out.add(new InFlight(m.messageId(), m.from(), m.to(), m.type(), m.sentAt(), m.dueAt() + delay.getOrDefault(m.messageId(), 0L), en.getValue()));
         }
+        out.sort(Comparator.comparing(InFlight::messageId));
         return out;
     }
 
     public List<PendingTimer> timers() {
+        return timers(true);
+    }
+
+    List<PendingTimer> timers(boolean useCheckpoint) {
         Map<String, PendingTimer> pending = new LinkedHashMap<>();
-        for (int i = 0; i <= cursor; i++) {
+        int from = 0;
+        WorldImage img = useCheckpoint ? log.checkpointAtOrBefore(timelineId, cursor).orElse(null) : null;
+        if (img != null) {
+            from = (int) img.seq() + 1;
+            for (Object n : Canon.list(img.data().get("nodes")))
+                for (Object t : Canon.list(Canon.map(n).get("timers"))) {
+                    Map<String, Object> tm = Canon.map(t);
+                    pending.put((String) tm.get("id"), new PendingTimer((String) tm.get("id"), (String) Canon.map(n).get("name"), (String) tm.get("name"), Canon.num(tm.get("due"))));
+                }
+        }
+        for (int i = from; i <= cursor; i++) {
             Event e = events.get(i);
             switch (e.kind()) {
                 case TIMER_SET -> pending.put(e.eventId(), new PendingTimer(e.eventId(), e.nodeId(), (String) e.payload().get("name"), Canon.num(e.payload().get("due"))));
@@ -219,7 +262,9 @@ public final class TimeTravelSession {
                 default -> { }
             }
         }
-        return new ArrayList<>(pending.values());
+        List<PendingTimer> out = new ArrayList<>(pending.values());
+        out.sort(Comparator.comparing(PendingTimer::timerId));
+        return out;
     }
 
     /** The whole world at the cursor as text: states, in-flight messages, timers, clocks. */

@@ -47,6 +47,10 @@ public final class BenchMain {
         printEnvironment();
         if (cmd.equals("soak")) {
             soak(soakSeeds);
+        } else if (cmd.equals("eval")) {
+            evaluate(Integer.parseInt(opt(a, "--seeds", "400")));
+        } else if (cmd.equals("nfr01")) {
+            nfr01(Integer.parseInt(opt(a, "--seeds", "1000")));
         } else {
             engineAndRecording(quick ? 10_000 : 100_000);
             clocks();
@@ -55,9 +59,11 @@ public final class BenchMain {
             replaySpeed(quick ? new int[]{10_000} : new int[]{10_000, 100_000});
             branching(quick ? 20_000 : 100_000);
             counterfactualThreads();
+            slowDisk(quick ? 5_000 : 20_000);
             if (xl) millionEvents();
             demoTime();
             soak(soakSeeds);
+            nfr01(quick ? 100 : 1000);
         }
         writeCsv(Path.of(csv));
         System.out.println("\nresults written to " + Path.of(csv).toAbsolutePath());
@@ -536,5 +542,112 @@ public final class BenchMain {
         double sec = (System.nanoTime() - t) / 1e9;
         row("SOAK", "Does a correct protocol survive random fault plans?", seeds + " seeds, KA-0 control", "violations", String.valueOf(violations), "", "", "runs", "expected 0; law problems: " + problems + "; " + replayed[0] + " runs also graph-checked and replay-verified");
         row("SOAK", "Chaos soak throughput", seeds + " seeds, " + events + " events", "wall clock", fmt(sec), "", "", "seconds", fmt(seeds / sec) + " runs/s on " + Runtime.getRuntime().availableProcessors() + " threads");
+    }
+
+    // ------------------------------------------------------------------------------------------------------------
+    // B13: the asynchronous writer on a slow disk
+    // ------------------------------------------------------------------------------------------------------------
+
+    private static void slowDisk(int targetEvents) throws IOException {
+        long h = horizonFor(5, targetEvents);
+        for (long delayMicros : new long[]{0, 100, 500, 2000}) {
+            Path d = tempDir("chronos-b13-");
+            try {
+                TimelineStore store = new TimelineStore(d);
+                Recording.Spec spec = Recording.Spec.of("gossip", 1).withParams(Map.of("nodes", "5", "horizon", Long.toString(h))).withCheckpointInterval(0);
+                Scenario sc = REG.create("gossip", spec.params());
+                TimelineHeader header = Recording.headerFor(sc, spec, "T0");
+                TimelineWriter w = store.openWriter(header, 5000, delayMicros);
+                long t0 = System.nanoTime();
+                Recorder rec = new Recorder("T0", 0, List.of(w));
+                Engine e = Engine.create(sc, 1, header.faultPlan(), new RunOptions(header.horizon(), false, 0), new RecordDecisionSource(sc, 1), rec);
+                e.boot();
+                e.runToEnd();
+                double engineSec = (System.nanoTime() - t0) / 1e9; // includes waiting for the queue (back-pressure) and the final drain
+                w.close();
+                long events = rec.nextSeq();
+                row("B13", "How does the asynchronous writer behave under a slow disk?", "simulated " + delayMicros + " us per step group", "events/s", fmt(events / engineSec), "", "", "events/s",
+                        "queue high-water " + w.queueHighWater() + " of 256 groups (bounded: the engine waits instead of growing memory); all " + events + " events persisted and readable: "
+                                + (new TimelineStore(d).events("T0").size() == events));
+            } finally {
+                deleteTree(d);
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------------------------------------------------
+    // NFR-01: byte-identical logs, 100% over 1,000 seeded runs of each demo scenario
+    // ------------------------------------------------------------------------------------------------------------
+
+    private static void nfr01(int seeds) {
+        Map<String, Map<String, String>> demos = new LinkedHashMap<>();
+        for (String n : List.of("pingpong", "causal", "re", "re2", "ka2", "ka3", "control")) demos.put(n, Map.of());
+        demos.put("gossip", Map.of("nodes", "4", "horizon", "300"));
+        int threads = Runtime.getRuntime().availableProcessors();
+        for (Map.Entry<String, Map<String, String>> sc : demos.entrySet())
+            for (boolean chaos : new boolean[]{false, true}) {
+                long t = System.nanoTime();
+                List<Campaign.Entry> a = Campaign.run(REG, sc.getKey(), sc.getValue(), 1, seeds, threads, chaos, 600L, null);
+                List<Campaign.Entry> b = Campaign.run(REG, sc.getKey(), sc.getValue(), 1, seeds, Math.max(1, threads / 2), chaos, 600L, null);
+                int same = 0;
+                for (int i = 0; i < seeds; i++) if (a.get(i).logHash().equals(b.get(i).logHash())) same++;
+                double sec = (System.nanoTime() - t) / 1e9;
+                row("NFR01", "Byte-identical logs over " + seeds + " seeded runs", sc.getKey() + (chaos ? " with chaos plans" : " default plan"), "identical", same + "/" + seeds, "", "", "runs",
+                        (same == seeds ? "100% identical" : "MISMATCH") + " (each seed run twice, on different thread counts); " + fmt(sec) + " s");
+            }
+    }
+
+    // ------------------------------------------------------------------------------------------------------------
+    // Evaluation on unplanned failures (Phase 17): a chaos campaign finds failing runs nobody planted; for each, CHRONOS names a root
+    // fault from the causal chain and a real counterfactual (remove that fault rule) tests whether it was a but-for cause.
+    // ------------------------------------------------------------------------------------------------------------
+
+    private static void evaluate(int seeds) throws IOException {
+        for (String sc : List.of("re", "re2")) {
+            Map<String, String> params = Map.of("partition", "off");
+            List<Campaign.Entry> res = Campaign.run(REG, sc, params, 1, seeds, Runtime.getRuntime().availableProcessors(), true, 900L, null);
+            List<Campaign.Entry> failing = res.stream().filter(Campaign.Entry::violated).toList();
+            Path d = tempDir("chronos-eval-");
+            try {
+                TimelineStore store = new TimelineStore(d);
+                TimelineManager mgr = new TimelineManager(store, REG);
+                CounterfactualEngine cf = new CounterfactualEngine(mgr);
+                Map<String, Integer> verdicts = new TreeMap<>();
+                Map<String, Integer> rootKinds = new TreeMap<>();
+                int noFaultRoot = 0, shown = 0;
+                System.out.println("\nEVAL " + sc + ": " + seeds + " chaos seeds, " + failing.size() + " ended in a violation");
+                for (Campaign.Entry e : failing) {
+                    String id = mgr.allocateRootId();
+                    Recording.record(store, REG, id, Recording.Spec.of(sc, e.seed()).withParams(params).withPlan(e.plan()).withHorizon(900L).withCheckpointInterval(25));
+                    List<Event> ev = store.events(id);
+                    TimeTravelSession s = new TimeTravelSession(store, id);
+                    s.goToViolation();
+                    List<List<Integer>> chains = s.whyChains(s.cursor());
+                    Event root = chains.isEmpty() ? null : ev.get(chains.get(0).get(0));
+                    if (root == null || root.kind() != EventKind.FAULT_INJECTED) {
+                        noFaultRoot++;
+                        continue;
+                    }
+                    String rule = (String) root.payload().get("rule");
+                    String kind = rule.substring(rule.indexOf('-') + 1);
+                    rootKinds.merge(kind, 1, Integer::sum);
+                    long first = ev.stream().filter(x -> x.kind() == EventKind.FAULT_INJECTED && rule.equals(x.payload().get("rule"))).findFirst().orElseThrow().seq();
+                    long at = mgr.roundToBoundary(id, Math.max(0, first - 1));
+                    CounterfactualEngine.Report rep = cf.run(new CounterfactualEngine.Query(id, at, List.of(Intervention.removeFault("rm", rule)), null, null));
+                    verdicts.merge(rep.verdict().name(), 1, Integer::sum);
+                    if (shown++ < 4)
+                        System.out.println("  seed " + e.seed() + ": root " + root.eventId() + " (" + Exports.describe(root, null) + ") -> remove it: " + rep.verdict());
+                    store.delete(rep.timelineId());
+                    store.delete(id);
+                }
+                int named = failing.size() - noFaultRoot;
+                row("EVAL", "Unplanned failures found by a chaos campaign", sc + ", " + seeds + " seeds", "failing runs", String.valueOf(failing.size()), "", "", "runs",
+                        "root fault named in " + named + "; root kinds " + rootKinds);
+                row("EVAL", "Is the named root fault a but-for cause? (real counterfactual: remove the rule)", sc, "verdicts", verdicts.toString(), "", "", "runs",
+                        "FAILURE_PERSISTS means overdetermined or another cause remains; " + noFaultRoot + " failing runs had no fault as the first source");
+            } finally {
+                deleteTree(d);
+            }
+        }
     }
 }

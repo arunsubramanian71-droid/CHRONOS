@@ -11,9 +11,11 @@ It is implemented from the architecture contract `CHRONOS System Specification v
 Terms such as *Node API*, *event*, *step*, *timeline*, *intervention*, *OMISSION edge* and *first causal divergence* are used
 exactly as the specification defines them.
 
-> **Status in one paragraph.** All eight modules exist and build; 119 automated tests pass; the flagship demonstration
-> (acceptance demonstrations AD-1 to AD-6 and known-answer scenarios KA-0, KA-2, KA-3, KA-4 on the replicated store "RE") runs from
-> one command with 24 self-checks. What is **not** done, and what deviates from the specification, is listed honestly in
+> **Status in one paragraph.** All eight modules exist and build (verified on macOS and on Linux); 136 automated tests pass; the flagship
+> demonstration (acceptance demonstrations AD-1 to AD-6 and known-answer scenarios KA-0, KA-2, KA-3, KA-4 on the replicated store "RE")
+> runs from one command with 24 self-checks; the whole fault catalogue and the whole intervention catalogue of the specification are
+> implemented and tested. What is **not** done (for example the live viewer, intervention search over the causal past, the blind
+> evaluation with a second person, Windows verification), and what deviates from the specification, is listed honestly in
 > [`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md), [`docs/TRACEABILITY.md`](docs/TRACEABILITY.md) and
 > [`docs/DEVIATIONS.md`](docs/DEVIATIONS.md). Full v0.2 compliance is **not** claimed.
 
@@ -66,7 +68,7 @@ java -version && mvn -version      # both must report Java 21
 ## Build and test
 
 ```bash
-mvn -ntp package          # compiles all eight modules, runs all 119 tests, builds the two jars
+mvn -ntp package          # compiles all eight modules, runs all 136 tests, builds the two jars
 ```
 
 Produces `chronos-cli/target/chronos.jar` (the CLI) and `chronos-bench/target/chronos-bench.jar` (benchmarks). Dependencies are
@@ -102,15 +104,17 @@ Below, `chronos` stands for `java -jar chronos-cli/target/chronos.jar`.
 | Goal | Command |
 |---|---|
 | Run and record RE (the failing run, kept running to the horizon) | `chronos run re --seed 42 --no-stop` |
+| Add faults to a run: pause, partition, crash, skew, slow link, reorder, after an event ... | `chronos run re --param partition=off --fault pause:p:300:400 --no-stop` (see `chronos help` for every `--fault` form) |
 | What happened, as the Section 10 event table / space-time diagram / DOT / JSON | `chronos show T0` · `--diagram` · `--dot` · `--json` |
 | Time travel: jump to the violation, show states, in-flight messages, timers, clocks | `chronos inspect T0 --goto violation --world` |
 | Step backward three times | `chronos inspect T0 --goto violation --back 3` |
 | Why did it fail? (causal past + chains from faults, inputs and starts) | `chronos inspect T0 --goto violation --why` |
-| Interactive-style session from stdin (`goto`, `step`, `back`, `state`, `world`, `why`, `find`, `watch`, `diff`, `branch` ...) | `chronos session T0` |
+| Interactive-style session from stdin (`goto`, `step`, `back`, `state`, `world`, `why`, `find`, `watch`, `diff`, `run-to`, `branch` ...) | `chronos session T0` |
+| Stepped replay: re-execute (verifying) until a breakpoint and inspect the live world | `echo "run-to time=500 node=p" \| chronos session T0` |
 | Replay and verify every regenerated event against the log | `chronos verify T0` (from a checkpoint: `--from-checkpoint 26`) |
 | Same scenario twice in this JVM and in 2 fresh JVMs; compare log hashes | `chronos determinism re --seed 42 --jvm 2` |
 | What if the partition had healed 200 ms earlier? | `chronos branch T0 --heal-earlier 200` |
-| Other interventions | `--remove-fault RULE` · `--drop MSGID` · `--delay MSGID:MS` · `--duplicate MSGID` · `--crash NODE:AT` · `--at SEQ\|EVENT\|violation` |
+| Other interventions | `--remove-fault RULE` · `--heal-later MS` · `--drop MSGID` · `--delay MSGID:MS` · `--duplicate MSGID` · `--swap MSG:MSG` · `--crash NODE:AT` · `--restart NODE:AT` · `--pause NODE:AT:DUR` · `--skew NODE:AT:OFFSET` · `--add-input NODE:AT:JSON` · `--remove-input N` · `--config K=V` · `--reseed NODE:STREAM:SEED` · `--patch-state NODE:volatile.f=V` (synthetic) · `--at SEQ\|EVENT\|violation` |
 | Where do two timelines first diverge, and why? | `chronos compare T0 T0.1` |
 | Which combination of fault rules is critical? (KA-4) | `chronos causes T0` |
 | Find a failing run by chaos (random fault plans, parallel) | `chronos campaign re --seeds 1-200 --chaos --param partition=off --keep` |
@@ -124,8 +128,9 @@ nondeterministic node for AD-2). `chronos scenarios` lists them.
 ## Benchmarks and soak
 
 ```bash
-java -jar chronos-bench/target/chronos-bench.jar all --csv bench-results.csv   # whole-system harness + 10,000-seed chaos soak
+java -jar chronos-bench/target/chronos-bench.jar all --csv bench-results.csv   # whole-system harness, 10,000-seed chaos soak, NFR-01 at full size
 java -jar chronos-bench/target/chronos-bench.jar jmh                           # JMH micro-benchmarks (vector clocks, encoding)
+java -jar chronos-bench/target/chronos-bench.jar eval --seeds 400              # evaluation on unplanned chaos failures (docs/EVALUATION.md)
 ```
 
 Measured results (and which targets of Section 8 were met or missed) are in [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md).
@@ -137,15 +142,15 @@ Measured results (and which targets of Section 8 were met or missed) are in [`do
   demonstration mapped to code and tests, each marked COMPLETE / SIMPLIFIED / NOT IMPLEMENTED / NOT VERIFIED.
 * `docs/DEVIATIONS.md`: where this implementation interprets, extends or departs from the specification, and why. Also the
   open questions Q1 and Q6.
-* `docs/BENCHMARKS.md`, `docs/sample-report-T0-vs-T0.1.html`, `docs/VIVA_GUIDE.md`.
+* `docs/BENCHMARKS.md` (measured results), `docs/EVALUATION.md` (the experiment on unplanned failures and what it does not show),
+  `docs/sample-report-T0-vs-T0.1.html`, `docs/demo-output.txt` (a real demo transcript), `docs/VIVA_GUIDE.md`.
 
 ## Limitations (summary; details in the documents above)
 
 * Simulation only (D-03): no real network, no real processes; applications are written against the Node API.
-* Fault catalogue: partition/heal, drop, delay, duplicate, crash, restart and probabilistic rules are implemented; **pause,
-  clock skew, reorder and slow link are not**. Interventions: remove a fault, shift a heal time, drop/delay/duplicate a message,
-  crash a node; the rest of the catalogue is not implemented.
-* Not implemented: the live local viewer and intervention search over the causal past (both Stretch), the knowledge view,
-  node-local replay, persisted index files, a blind-debugging evaluation with a second person.
-* Verified on macOS (Apple Silicon, JDK 21) only; Linux and Windows are not verified.
+* Not implemented: the live local viewer and intervention search over the causal past (both Stretch), the knowledge view, node-local
+  replay, the "on node state" fault trigger, persisted index files, and a **blind** debugging evaluation with a second person
+  (`docs/EVALUATION.md` evaluates the analysers on 800 unplanned chaos runs instead, and says what that does not show).
+* Verified on macOS (Apple Silicon, JDK 21) and on Linux (Ubuntu 24.04 in a container); **Windows is not verified**.
 * A counterfactual is evidence about the simulated world under CHRONOS's rules, not proof about reality (Section 19).
+* Interpretations and extensions of the specification are recorded as DEV-01 to DEV-29 in `docs/DEVIATIONS.md`.

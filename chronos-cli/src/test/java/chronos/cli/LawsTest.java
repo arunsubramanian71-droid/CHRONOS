@@ -150,6 +150,41 @@ class LawsTest {
         return m;
     }
 
+    @Test
+    void m2_inflightAndTimersFromTheNearestCheckpointEqualTheFullFoldAtEveryPosition() throws Exception {
+        // reconstruction from a checkpoint (Section 14) must agree with folding the whole log, at every cursor, on every demo
+        Env env = new Env(tmp);
+        java.lang.reflect.Method inflight = TimeTravelSession.class.getDeclaredMethod("inflight", boolean.class);
+        java.lang.reflect.Method timers = TimeTravelSession.class.getDeclaredMethod("timers", boolean.class);
+        inflight.setAccessible(true);
+        timers.setAccessible(true);
+        int checked = 0;
+        for (Map.Entry<String, Map<String, String>> sc : ALL) {
+            env.record(sc.getKey(), 5, sc.getValue(), null, Boolean.FALSE);
+            if (sc.getKey().equals("re2")) continue;
+            TimeTravelSession s = new TimeTravelSession(env.store, env.last);
+            int n = env.events(env.last).size();
+            for (int pos = 0; pos < n; pos += Math.max(1, n / 60)) {
+                s.goTo(pos);
+                assertEquals(inflight.invoke(s, false).toString(), inflight.invoke(s, true).toString(), sc.getKey() + " in-flight at " + pos);
+                assertEquals(timers.invoke(s, false).toString(), timers.invoke(s, true).toString(), sc.getKey() + " timers at " + pos);
+                checked++;
+            }
+        }
+        // and under faults that change the agenda: duplicates, delays, pauses, crashes
+        FaultPlan plan = FaultPlan.of(FaultRule.nth("d", FaultRule.FaultAction.DUPLICATE, "p", "b", "Heartbeat", 2, null), FaultRule.nth("l", FaultRule.FaultAction.DELAY, "p", "b", "Heartbeat", 3, 130L),
+                FaultRule.crash("c", "b", 250), FaultRule.restart("r", "b", 420), FaultRule.pause("g", "p", 100, 60));
+        env.record("re", 42, Map.of("partition", "off"), plan, Boolean.FALSE);
+        TimeTravelSession s = new TimeTravelSession(env.store, env.last);
+        for (int pos = 0; pos < s.graph().size(); pos++) {
+            s.goTo(pos);
+            assertEquals(inflight.invoke(s, false).toString(), inflight.invoke(s, true).toString(), "faulty in-flight at " + pos);
+            assertEquals(timers.invoke(s, false).toString(), timers.invoke(s, true).toString(), "faulty timers at " + pos);
+            checked++;
+        }
+        assertTrue(checked > 300);
+    }
+
     // ---------------------------------------------------------------- M3, M4 clocks and graph
     @Test
     void m3_m4_vectorOrderEqualsGraphReachabilityAndEveryEdgePointsBackwards() {

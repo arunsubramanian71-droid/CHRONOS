@@ -64,11 +64,16 @@ public final class TimelineStore implements LogReader {
     }
 
     public TimelineWriter openWriter(TimelineHeader header, int segmentSize) {
+        return openWriter(header, segmentSize, 0);
+    }
+
+    /** As above, with a simulated per-step-group delay in microseconds: a hook to benchmark the writer's back-pressure on a slow disk (B13). */
+    public TimelineWriter openWriter(TimelineHeader header, int segmentSize, long simulatedGroupDelayMicros) {
         Path dir = dirOf(header.timelineId());
         if (Files.exists(dir)) throw new IllegalStateException("timeline " + header.timelineId() + " already exists");
         if (header.parentId() != null && !Files.isDirectory(dirOf(header.parentId()))) throw new UnknownTimelineException(header.parentId());
         try {
-            TimelineWriter w = new TimelineWriter(this, header, dir, segmentSize);
+            TimelineWriter w = new TimelineWriter(this, header, dir, segmentSize, simulatedGroupDelayMicros);
             updateCatalog(header, TimelineStatus.RECORDING);
             return w;
         } catch (IOException e) {

@@ -19,6 +19,7 @@ public final class Recorder {
     private long nextSeq;
     private List<EventSink> sinks;
     private LogHash hash = new LogHash();
+    private boolean hashing = true;
 
     public Recorder(String timelineId, long startSeq, List<EventSink> sinks) {
         this.timelineId = timelineId;
@@ -31,7 +32,7 @@ public final class Recorder {
         List<Event> out = new ArrayList<>(group.size());
         for (Event e : group) out.add(e.withPosition(nextSeq++, timelineId));
         for (EventSink s : sinks) s.append(out);
-        for (Event e : out) hash.add(e);
+        if (hashing) for (Event e : out) hash.add(e);
         return out;
     }
 
@@ -52,7 +53,12 @@ public final class Recorder {
         return timelineId;
     }
 
-    /** Hash of the events recorded through this recorder (a branch's own events only). */
+    /** A verifying replay does not use the recorder's hash (the verdict carries the hash of the recorded log), so it can skip the work. */
+    public void setHashing(boolean on) {
+        this.hashing = on;
+    }
+
+    /** Hash of the events recorded through this recorder (a branch's own events only); empty if hashing was switched off. */
     public String ownLogHash() {
         return hash.hex();
     }

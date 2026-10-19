@@ -1,0 +1,18 @@
+CHRONOS benchmark harness
+environment: processor Apple M2 Max (12 cores), max heap 8192 MiB, Mac OS X 27.2 aarch64, JDK 21.0.12.1 OpenJDK 64-Bit Server VM
+method: fixed seeds; 5 repetitions, the first discarded for warm-up; median / p95 / p99
+EVAL re: 400 chaos seeds, 30 ended in a violation
+  seed 5: root fault:c1-partition#1 (FAULT PARTITION (c1-partition)) -> remove it: FAILURE_DISAPPEARS
+  seed 66: root fault:c2-partition#1 (FAULT PARTITION (c2-partition)) -> remove it: FAILURE_DISAPPEARS
+  seed 93: root fault:c1-pause#1 (FAULT PAUSE (c1-pause)) -> remove it: FAILURE_DISAPPEARS
+  seed 107: root fault:c4-partition#1 (FAULT PARTITION (c4-partition)) -> remove it: FAILURE_PERSISTS
+EVAL  Unplanned failures found by a chaos campaign  re, 400 seeds  failing runs  30  runs  root fault named in 26; root kinds {crash-after=1, partition=16, pause=8, pause-after=1}
+EVAL  Is the named root fault a but-for cause? (rea~ re  verdicts  {FAILURE_DISAPPEARS=21, FAILURE_PERSISTS=5}  runs  FAILURE_PERSISTS means overdetermined or another cause remains; 4 failing runs had no fault as the first source
+EVAL re2: 400 chaos seeds, 70 ended in a violation
+  seed 7: root fault:c2-pause-after#1 (FAULT PAUSE (c2-pause-after)) -> remove it: FAILURE_PERSISTS
+  seed 8: root fault:c3-crash#1 (FAULT CRASH (c3-crash)) -> remove it: FAILURE_DISAPPEARS
+  seed 15: root fault:c2-crash-after#1 (FAULT CRASH (c2-crash-after)) -> remove it: FAILURE_DISAPPEARS
+  seed 26: root fault:c1-crash#1 (FAULT CRASH (c1-crash)) -> remove it: FAILURE_DISAPPEARS
+EVAL  Unplanned failures found by a chaos campaign  re2, 400 seeds  failing runs  70  runs  root fault named in 68; root kinds {crash=21, crash-after=11, delay=1, partition=24, pause=6, pause-after=4, slow=1}
+EVAL  Is the named root fault a but-for cause? (rea~ re2  verdicts  {FAILURE_DISAPPEARS=52, FAILURE_PERSISTS=16}  runs  FAILURE_PERSISTS means overdetermined or another cause remains; 2 failing runs had no fault as the first source
+results written to /private/tmp/eval2.csv

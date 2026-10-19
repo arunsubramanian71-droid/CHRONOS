@@ -31,7 +31,10 @@ public final class VerifyingSink implements EventSink {
         for (Event actual : group) {
             long pos = actual.seq();
             Event expected = pos >= 0 && pos < recorded.size() ? recorded.get((int) pos) : null;
-            List<String> diffs = expected == null ? List.of("recording ended: it has no event at position " + pos) : diff(expected, actual);
+            // fast path: the whole event (every field except the timeline id) equals the recorded one; the field-by-field diff is only
+            // computed when something differs, so the check is exactly as strict but far cheaper on the common case
+            List<String> diffs = expected == null ? List.of("recording ended: it has no event at position " + pos)
+                    : expected.withPosition(actual.seq(), actual.timelineId()).equals(actual) ? List.of() : diff(expected, actual);
             if (!diffs.isEmpty()) {
                 String first = diffs.get(0);
                 String msg = "mismatch at " + actual.eventId() + ": " + friendly(first, actual);

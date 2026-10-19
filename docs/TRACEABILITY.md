@@ -8,7 +8,7 @@ Maps `CHRONOS System Specification v0.2.pdf` to code and tests. Status values:
 * **NOT VERIFIED** — built but not demonstrated in this environment.
 
 Test classes: `EngineTest`, `ClockServiceTest`, `CanonTest` (model/runtime unit); `TimelineStoreTest` (store); `CausalGraphTest`,
-`ComparatorTest` (analysis); `AcceptanceTest`, `LawsTest`, `KnownAnswerTest`, `PersistenceTest`, `SoakTest`, `CliTest`
+`ComparatorTest` (analysis); `AcceptanceTest`, `LawsTest`, `KnownAnswerTest`, `PersistenceTest`, `SoakTest`, `GoldenFileTest`, `FaultCatalogueTest`, `CliTest`
 (chronos-cli, integration with the demo applications); `BuildRulesTest` (chronos-bench, build-time rules).
 Paths are relative to the module's `src/main/java/chronos/<package>/`.
 
@@ -28,7 +28,7 @@ Paths are relative to the module's `src/main/java/chronos/<package>/`.
 | D-10 | Digest every step, full state on change | runtime `Engine.finishTrigger` | `LawsTest.m2` | COMPLETE |
 | D-11 | Segmented JSON-lines log, commit lines, derived indexes, checkpoints, no DB | store `TimelineStore`, `TimelineWriter`, `TimelineIndex` | `TimelineStoreTest`, `PersistenceTest` | COMPLETE (indexes in memory: DEV-16) |
 | D-12 | Immutable timelines, branch references prefix | store `TimelineStore.events/segments`; analysis `TimelineManager` | `LawsTest.m6, m11`, `TimelineStoreTest` | COMPLETE |
-| D-13 | Fault rules keyed by time/identity; `nonLocal` wildcard | model `FaultRule`, `FaultPlan`; runtime `FaultInjector` | `CanonTest.faultRuleValidationFollowsD13`, `LawsTest.m8` | COMPLETE (`maxFirings` validated only: DEV-19) |
+| D-13 | Fault rules keyed by time/identity; triggers at time, after a named event, on message id, nth message, probabilistic; `nonLocal` wildcard | model `FaultRule`, `FaultPlan`; runtime `FaultInjector` | `CanonTest.faultRuleValidationFollowsD13`, `LawsTest.m8`, `FaultCatalogueTest` | COMPLETE (`maxFirings` validated only: DEV-19; the Stretch trigger "on node state" NOT IMPLEMENTED) |
 | D-14 | Own causal graph on dense arrays | analysis `CausalGraph` | `CausalGraphTest`, `LawsTest.m3_m4` | COMPLETE |
 | D-15 | Continue policy | analysis `BranchDecisionSource`, `TimelineManager` | `LawsTest.m6, m7` | COMPLETE (Pinned deferred by the spec) |
 | D-16 | First causal divergence, per-timeline taint, anchor rule | analysis `TimelineComparator` | `ComparatorTest`, `AcceptanceTest.ad5`, `LawsTest.m10` | COMPLETE (fallback when no anchor: DEV-10) |
@@ -38,7 +38,7 @@ Paths are relative to the module's `src/main/java/chronos/<package>/`.
 | D-20 | Java 21, Maven, JUnit 5, JMH, hand-written fakes, own property generator | all poms; `EngineTest` `Fakes`; `SeededRandom` | `BuildRulesTest` | COMPLETE |
 | D-21 | Threads: engine single, one async writer, fixed worker pool | store `TimelineWriter`; analysis `CounterfactualEngine`, `Campaign` | `LawsTest.m12`, `TimelineStoreTest.theBoundedQueue...` | COMPLETE |
 | D-22 | Scenarios are Java classes registered by name | sdk `Scenario`, `ScenarioRegistry`; demo `DemoRegistry` | `CliTest`, `LawsTest.m1` | COMPLETE |
-| D-23 | OMISSION edge | runtime `FaultInjector.omissionSources`, `Engine.doTimer` | `AcceptanceTest.ad1`, `KnownAnswerTest` (KA-1, KA-3) | COMPLETE (partition scope refined: DEV-03; pause scope NOT IMPLEMENTED) |
+| D-23 | OMISSION edge | runtime `FaultInjector.omissionSources`, `Engine.doTimer` | `AcceptanceTest.ad1`, `KnownAnswerTest` (KA-1, KA-3), `FaultCatalogueTest` (pause scope) | COMPLETE (partition scope refined: DEV-03) |
 | D-24 | Env events keyed by what they concern | runtime `Engine` (`drop:`, `fault:`, `iv:`, `inv:`, `dup:`) | `LawsTest.m13`, `EngineTest.everyCopy...` | COMPLETE (+ copy suffixes: DEV-12) |
 | D-25 | INTERVENTION_APPLIED on env; origin in digest | runtime `Engine.applyInterventions`; model `Event.contentDigest` | `AcceptanceTest.ad4`, `LawsTest.m7, m10`, `CanonTest.eventLineRoundTrip...` | COMPLETE |
 | D-26 | Node API in its own module | `chronos-sdk` | `BuildRulesTest` | COMPLETE |
@@ -68,15 +68,15 @@ Paths are relative to the module's `src/main/java/chronos/<package>/`.
 | 20 | Reconstruct state, in-flight, timers from the log only | `TimeTravelSession`; `LawsTest.m2`, `AcceptanceTest.ad3` | COMPLETE |
 | 21 | Checkpoints at interval and branch points; restorable | `Engine.captureImage/restore`; `LawsTest.m5` | COMPLETE |
 | 22, 23 | Replay from start or checkpoint; verify every event; report first mismatch | `ReplayEngine`, `VerifyingSink`; `LawsTest.m1`, `AcceptanceTest.ad2` | COMPLETE |
-| 24 | Stepped replay with breakpoints | `ReplayEngine.runUntil`; `SoakTest.steppedReplay...` | SIMPLIFIED (API only, not in CLI: DEV-17) |
+| 24 | Stepped replay with breakpoints | `ReplayEngine.runUntil`, session `run-to`; `SoakTest.steppedReplay...`, `CliTest.session...` | COMPLETE (DEV-17) |
 | 25, 26, 27 | Time-travel session: goto, step, back, next/prev, find; inspect; causal queries | `TimeTravelSession`, CLI `inspect`, `session`; `AcceptanceTest.ad3`, `CliTest.session...` | COMPLETE |
 | 28 | State watch | `TimeTravelSession.watch`; `LawsTest.m14`, `CliTest.session...` | COMPLETE |
 | 29 | Branch at any step boundary sharing the prefix by reference | `TimelineManager`; `LawsTest.m6` | COMPLETE |
 | 30 | Timeline tree; inspect; delete leaves | `TimelineManager.tree`, `TimelineStore.delete`; `CliTest.deleteOnlyLeaf...` | COMPLETE |
-| 31 | Fault plans | `FaultRule`, `FaultInjector`, `Engine` | SIMPLIFIED: partition+heal, drop, delay, crash (Must) and restart, duplicate (Should) done; **reorder, pause, clock skew NOT IMPLEMENTED** |
+| 31 | Fault plans with triggers and actions | `FaultRule`, `FaultInjector`, `Engine`; `FaultCatalogueTest`, `EngineTest`, CLI `--fault` | COMPLETE: partition + heal, drop, delay, crash (Must); restart, duplicate, reorder, pause, clock skew (Should); slow link (Could); triggers at time, after event, on message id, nth message, probabilistic (the Stretch trigger "on state" is not implemented) |
 | 32 | Faults recorded with causal edges incl. OMISSION | `Engine`; `EngineTest`, `AcceptanceTest.ad1` | COMPLETE |
 | 33 | Probabilistic faults by identity hashing | `RecordDecisionSource`, `ReplayDecisionSource`; `EngineTest.probabilistic...` | COMPLETE |
-| 34 | Interventions at a branch point, run to horizon or violation | `Engine.applyInterventions`, `TimelineManager`; `AcceptanceTest.ad4` | SIMPLIFIED (6 of the intervention types: DEV in DEVIATIONS) |
+| 34 | Interventions at a branch point, run to horizon or violation | `Engine.applyInterventions`, `TimelineManager`; `AcceptanceTest.ad4`, `FaultCatalogueTest`, `CliTest` | COMPLETE: the whole catalogue of Section 19 (drop, delay, swap/reorder, duplicate, crash/restart/pause, create/move/remove a partition, clock skew, add/remove input, config patch, reseed, patch state); DEV-27 to DEV-29 |
 | 35 | Verdict, new timeline, divergence summary | `CounterfactualEngine`; `KnownAnswerTest` | COMPLETE (all five verdicts tested) |
 | 36 | Parallel isolated counterfactuals | `CounterfactualEngine.runAll`; `LawsTest.m12` | COMPLETE |
 | 37 | Seed campaign | `Campaign`, CLI `campaign`; `CliTest.campaign...` | COMPLETE |
@@ -92,13 +92,13 @@ Paths are relative to the module's `src/main/java/chronos/<package>/`.
 | 49 | Demos: ping-pong, causal-ordering, RE, two more known-answer | demo module | COMPLETE (KA-2, KA-3, KA-4 + control + bad citizen) |
 | 50 | Live local web viewer | — | NOT IMPLEMENTED (Stretch) |
 | 51 | INTERVENTION_APPLIED on env, id `iv:<id>`, origin in digest | `Engine.applyInterventions` | COMPLETE |
-| 52 | OMISSION edges: partition scope (12a), crash and pause scopes (12b) | `FaultInjector` | SIMPLIFIED (partition and crash scopes; pause not implemented; DEV-03) |
+| 52 | OMISSION edges: partition scope (12a), crash and pause scopes (12b) | `FaultInjector`; `FaultCatalogueTest`, `KnownAnswerTest` | COMPLETE (partition scope refined: DEV-03) |
 
 ## Non-functional requirements NFR-01 to NFR-20
 
 | NFR | Target | Evidence | Status |
 |---|---|---|---|
-| 01 | Byte-identical logs, 100% over 1,000 seeded runs of each demo | `SoakTest.nfr01...` (200 seeds × 9 scenarios, with and without chaos, runs compared pairwise); 10,000-seed chaos soak in the harness | SIMPLIFIED: 200 seeds per scenario in the test suite, 10,000 for the control in the soak; the full 1,000-per-demo figure was not run for every scenario |
+| 01 | Byte-identical logs, 100% over 1,000 seeded runs of each demo | harness `nfr01`: 8 demo scenarios × {default, chaos} × 1,000 seeds, each run twice on different thread counts = 16,000 pairs, all identical (`docs/BENCHMARKS.md`); `SoakTest.nfr01...` repeats it with 200 seeds in the suite; fresh-JVM determinism in `CliTest`; the Linux build reproduces the macOS golden logs | COMPLETE |
 | 02 | Clock rules on every event | `LawsTest.m3_m4`, `SoakTest` self-check on 1,350 chaos runs | COMPLETE |
 | 03 | Reconstructed state = live state | `LawsTest.m2` | COMPLETE |
 | 04 | Recorded timelines never modified | `LawsTest.m11`, `TimelineStoreTest.readingNeverModifiesAnyFile` | COMPLETE |
@@ -111,10 +111,10 @@ Paths are relative to the module's `src/main/java/chronos/<package>/`.
 | 11 | Torn last record detected and discarded | `TimelineStoreTest`, `PersistenceTest` | COMPLETE |
 | 12 | Components testable in isolation | hand-written fakes in `EngineTest`, `TraceBuilder`, `MemoryTimelines` | COMPLETE |
 | 13 | Single direction of dependency, enforced by the build | `BuildRulesTest` + Maven | COMPLETE |
-| 14 | Linux, Windows, macOS with Java 21 | built and tested on macOS (Apple Silicon) only | NOT VERIFIED on Linux and Windows |
+| 14 | Linux, Windows, macOS with Java 21 | macOS (Apple Silicon, JDK 21, Maven 3.10.0): full build and tests; **Linux** (Ubuntu 24.04, aarch64, Temurin 21, Maven 3.9.16, in a container on a copy of the source): `mvn package` BUILD SUCCESS, all tests incl. the golden files generated on macOS and the process-kill test | COMPLETE on macOS and Linux; **NOT VERIFIED on Windows** |
 | 15 | New member runs the demo from the README in < 10 minutes, three commands | README: set JAVA_HOME, `mvn -ntp package`, `java -jar ... demo`; the demo itself takes seconds | NOT VERIFIED with a new person |
 | 16 | Output speaks CHRONOS vocabulary and cites event ids | all reports | COMPLETE |
-| 17 | Every component has a teaching note and a runnable demo | Javadoc teaching notes on every public type; `docs/VIVA_GUIDE.md` | SIMPLIFIED |
+| 17 | Every component has a teaching note and a runnable demo | Javadoc teaching notes on every public type; `docs/VIVA_GUIDE.md` (concept to code to command) | SIMPLIFIED (notes are in Javadoc and the guide, not one per component) |
 | 18 | Format version on stored files; old logs refused clearly | `TimelineStoreTest.aLogWithAnUnknownFormatVersionIsRefused` | COMPLETE |
 | 19 | < 5 runtime libraries, each justified | `BuildRulesTest` (Jackson is the only runtime library; JMH is build-time in the bench module) | COMPLETE |
 | 20 | Build-time scan for wall-clock, unseeded randomness, raw threads | `BuildRulesTest` (with a negative control that detects the bad citizen) | COMPLETE |
@@ -166,10 +166,10 @@ are each exercised in `KnownAnswerTest`.
 | 7 persistence, 8 state/snapshots — Milestone B | COMPLETE |
 | 9 replay — Milestone C | COMPLETE |
 | 10a, 11, 12a, 13a, 14a — Milestone S | COMPLETE |
-| 10b deeper time travel | COMPLETE (R3 breakpoints API-only) |
-| 12b fault catalogue | SIMPLIFIED (pause, clock skew, reorder, slow link missing) |
-| 13b full counterfactuals | SIMPLIFIED (6 intervention types; DIFFERENT_FAILURE simplified) |
+| 10b deeper time travel | COMPLETE (`run-to` breakpoints, `find`, `watch`, `diff`, `effects`, `concurrent-with`, `next-on`, `prev-on`; world reconstruction from the nearest checkpoint) |
+| 12b fault catalogue | COMPLETE (durable zone and restart, all faults, the other triggers except the Stretch "on state", OMISSION scopes for crash and pause, sequential campaigns) |
+| 13b full counterfactuals | COMPLETE (whole intervention catalogue, parallel pool, campaigns on the pool); `DIFFERENT_FAILURE` simplified (DEV-08) |
 | 14b comparator hardening | COMPLETE (concurrent roots, absorbed divergence, suspected nondeterminism, KA-4) |
 | 15a static HTML report | COMPLETE |
-| 16 benchmarks | COMPLETE for the benchmarks that were run (see `docs/BENCHMARKS.md`); B11 (intervention search) and B13 (slow disk) were not run |
-| 17 documentation, demonstrations, evaluation | PARTIAL: README, status, traceability, deviations, benchmarks, viva guide, demo script are written; the blind-debugging evaluation and the evaluation chapter are NOT DONE (they need a second person) |
+| 16 benchmarks | COMPLETE (`docs/BENCHMARKS.md`: B1-B10, B12-B14, a 1,018,235-event run with memory profile, a 10,000-seed chaos soak, NFR-01 at full size); B11 is moot because intervention search is not implemented |
+| 17 documentation, demonstrations, evaluation | PARTIAL: README, status, traceability, deviations, benchmarks, viva guide, demo script, sample report, demo transcript and an evaluation on 800 unplanned chaos runs (`docs/EVALUATION.md`) are written; the **blind debugging protocol** (needs a second person) is NOT DONE |

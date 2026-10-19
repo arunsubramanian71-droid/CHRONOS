@@ -133,6 +133,7 @@ public final class ReplayEngine {
             this.sink = new VerifyingSink(rec, breakpoint);
             long startSeq = start == null ? 0 : start.seq() + 1;
             Recorder recorder = new Recorder(tl, startSeq, List.of(sink));
+            recorder.setHashing(false);
             // horizon of whichever timeline of the lineage is in force at the starting position
             TimelineHeader inForce = root;
             long from = start == null ? -1 : start.seq();

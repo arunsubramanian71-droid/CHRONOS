@@ -32,12 +32,15 @@ public final class TimelineWriter implements EventSink {
     private final Thread thread;
     private volatile Throwable failure;
     private volatile boolean closed;
+    private final long simulatedGroupDelayNanos;   // benchmark hook (B13): pretend the disk is slow
+    private volatile int queueHighWater;
 
     private int segmentIndex = -1;
     private int eventsInSegment;
     private OutputStream out;
 
-    TimelineWriter(TimelineStore store, TimelineHeader header, Path dir, int segmentSize) throws IOException {
+    TimelineWriter(TimelineStore store, TimelineHeader header, Path dir, int segmentSize, long simulatedGroupDelayMicros) throws IOException {
+        this.simulatedGroupDelayNanos = simulatedGroupDelayMicros * 1000;
         this.store = store;
         this.timelineId = header.timelineId();
         this.dir = dir;
@@ -48,6 +51,11 @@ public final class TimelineWriter implements EventSink {
         thread = new Thread(this::loop, "chronos-writer-" + timelineId);
         thread.setDaemon(true);
         thread.start();
+    }
+
+    /** The largest number of step groups that were waiting in the bounded queue (its capacity is 256): evidence of back-pressure. */
+    public int queueHighWater() {
+        return queueHighWater;
     }
 
     @Override
@@ -97,6 +105,8 @@ public final class TimelineWriter implements EventSink {
         if (closed) throw new IllegalStateException("writer of " + timelineId + " is closed");
         try {
             queue.put(o);
+            int size = queue.size();
+            if (size > queueHighWater) queueHighWater = size;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("interrupted while queueing events", e);
@@ -142,6 +152,7 @@ public final class TimelineWriter implements EventSink {
         out.write((lines + commit).getBytes(StandardCharsets.UTF_8));
         out.flush();
         eventsInSegment += group.size();
+        if (simulatedGroupDelayNanos > 0) java.util.concurrent.locks.LockSupport.parkNanos(simulatedGroupDelayNanos);
     }
 
     private void rollSegment() throws IOException {

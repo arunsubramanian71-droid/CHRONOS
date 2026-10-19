@@ -10,17 +10,20 @@ HTML report, benchmarks and documentation. **Full v0.2 compliance is NOT claimed
 | What | Command | Result |
 |---|---|---|
 | Maven runs on JDK 21 | `mvn -version` after `JAVA_HOME=$(/usr/libexec/java_home -v 21)`; the build also has an enforcer rule `[21,22)` | `Java version: 21.0.12.1` |
-| Compilation + all tests + packaging, from scratch | `mvn -ntp clean package` | **BUILD SUCCESS**, 14 s, 8 modules |
-| Unit and integration tests | same command | **119 tests, 0 failures, 0 errors, 0 skipped** |
+| Compilation + all tests + packaging, from scratch (macOS) | `mvn -ntp clean package` | **BUILD SUCCESS**, ~14 s, 8 modules |
+| Unit, integration and acceptance tests | same command | **136 tests, 0 failures, 0 errors, 0 skipped** |
+| **Linux** build and tests | `docker run maven:3.9-eclipse-temurin-21 ... mvn -ntp package` on a copy of the source (Ubuntu 24.04 aarch64, Temurin 21, Maven 3.9.16) | **BUILD SUCCESS**; the golden files generated on macOS pass on Linux (NFR-14, R16) |
 | Packaging | same command | `chronos-cli/target/chronos.jar` (2.6 MB), `chronos-bench/target/chronos-bench.jar` (5.6 MB), both self-contained |
-| Flagship demonstration from the packaged jar | `java -jar chronos-cli/target/chronos.jar --data chronos-data demo` | **24 of 24 checks passed**, exit 0 (transcript: `docs/demo-output.txt`) |
+| Flagship demonstration from the packaged jar | `java -jar chronos-cli/target/chronos.jar --data chronos-data demo` | **24 of 24 checks passed**, exit 0 (`docs/demo-output.txt`) |
 | Cross-JVM determinism | `chronos determinism re --seed 42 --jvm 2` (in `CliTest`) | the same log hash in this JVM and in 2 fresh JVMs |
+| NFR-01 at full size | `chronos-bench.jar nfr01 --seeds 1000` | 8 demos x {default, chaos} x 1,000 seeds = 16,000 pairs, **all identical** |
 | Persistence and reload in a fresh context | `PersistenceTest`, `AcceptanceTest.ad2` | saved by one `TimelineStore`, loaded and replay-verified by another; a **real child process killed mid-write** leaves a readable log |
-| Replay verification | `LawsTest.m1*`, `SoakTest` | 1,350 chaos runs plus every demo replayed and verified event by event; a mutated recording is caught at exactly the mutated event |
+| Replay verification | `LawsTest.m1*`, `SoakTest`, `FaultCatalogueTest` | chaos runs on every demo, every checkpoint of every demo, branches through their lineage; a mutated recording is caught at exactly the mutated event |
 | HTML report | `chronos report T0 --against T0.1`; `CliTest`; opened in a browser during development | generated, self-contained (no external reference, checked by the program), diagram/cone/path rendering inspected |
-| Benchmarks and soak | `chronos-bench.jar all` (JDK 21), `... jmh` | results in `docs/BENCHMARKS.md`; **10,000-seed chaos soak: 0 violations** |
+| Benchmarks, soak, slow disk | `chronos-bench.jar all` (JDK 21), `... jmh` | `docs/BENCHMARKS.md`; **10,000-seed chaos soak: 0 violations**; NFR-05 to NFR-09 all met |
+| Evaluation on unplanned failures | `chronos-bench.jar eval --seeds 400` | 800 chaos runs, 100 failures, root fault named in 94, but-for confirmed by counterfactual in 73 (`docs/EVALUATION.md`) |
 
-### Test inventory (119)
+### Test inventory (136)
 
 | Module | Tests | Classes |
 |---|---|---|
@@ -28,23 +31,23 @@ HTML report, benchmarks and documentation. **Full v0.2 compliance is NOT claimed
 | chronos-store | 15 | `TimelineStoreTest` |
 | chronos-runtime | 16 | `EngineTest` |
 | chronos-analysis | 16 | `CausalGraphTest` 6, `ComparatorTest` 10 |
-| chronos-cli | 49 | `AcceptanceTest` 5, `LawsTest` 16 (M1-M14), `KnownAnswerTest` 7, `PersistenceTest` 4, `CliTest` 11, `SoakTest` 4, `GoldenFileTest` 2 |
+| chronos-cli | 66 | `AcceptanceTest` 5, `LawsTest` 18 (M1-M14), `KnownAnswerTest` 7, `PersistenceTest` 4, `CliTest` 12, `SoakTest` 4, `GoldenFileTest` 2, `FaultCatalogueTest` 14 |
 | chronos-bench | 8 | `BuildRulesTest` (dependency direction, banned APIs, approved libraries, soak harness) |
 
 ## What is implemented (modules)
 
-| Module | Main / test code | State |
-|---|---|---|
-| chronos-model | 25 files, 1,084 lines / 188 | Events, ids, kinds, edge kinds, clocks, canonical encoding, digests, fault/intervention/image types, `LogReader`, `EventSink`, `DeterminismViolation`. |
-| chronos-sdk | 13 / 391 / 0 | Node API, context, `NodeState` (volatile + durable zones), codec, scenario, invariant, world view, registry, code fingerprint. Exercised through the runtime and CLI tests. |
-| chronos-store | 3 / 651 / 267 | Segmented JSONL log, commit lines with checksums, torn-tail recovery, checkpoints, catalogue, segment resolution, async writer, in-memory indexes. |
-| chronos-runtime | 13 / 1,678 / 357 | Deterministic engine, agenda, fault injector (partition/heal, drop, delay, duplicate, crash, restart, probabilistic), invariants with witnesses, interventions, checkpoint capture/restore. |
-| chronos-demo | 10 / 807 / 0 | ping-pong, causal demo, RE (+ two-backup variant), lost update, blocked commit, control, gossip, bad citizen. |
-| chronos-analysis | 16 / 2,239 / 449 | Causal graph, exports, replay (R1, R2, R3 API, R4), branching, time travel, comparator, counterfactual engine with 5 verdicts, chaos generator, campaigns with a worker pool. |
-| chronos-cli | 6 / 1,176 / 1,393 | Hand-written CLI (run, ls, show, inspect, session, verify, determinism, branch/counterfactual, compare, causes, campaign, report, delete, demo), HTML report, flagship demo. |
-| chronos-bench | 3 / 670 / 171 | JMH benchmarks, whole-system harness (B1-B14, million-event run, soak), build-rule checks. |
+| Module | State |
+|---|---|
+| chronos-model | Events, ids, kinds, edge kinds, clocks, canonical encoding, digests, fault/intervention/image types, `LogReader`, `EventSink`, `DeterminismViolation`. |
+| chronos-sdk | Node API, context, `NodeState` (volatile + durable zones), codec, scenario, invariant, world view, registry, code fingerprint. |
+| chronos-store | Segmented JSONL log, commit lines with checksums, torn-tail recovery, checkpoints, catalogue, segment resolution, async writer (with a slow-disk benchmark hook), in-memory indexes. |
+| chronos-runtime | Deterministic engine, agenda, fault injector (partition/heal, drop, delay, duplicate, reorder, crash, restart, pause, clock skew, slow link, probabilistic; triggers at time, after an event, on message id, nth message), invariants with witnesses, the whole intervention catalogue, checkpoint capture/restore. |
+| chronos-demo | ping-pong, causal demo, RE (+ two-backup variant), lost update, blocked commit, control, gossip, bad citizen. |
+| chronos-analysis | Causal graph, exports, replay (R1, R2, R3, R4), branching, time travel (world from the nearest checkpoint), comparator, counterfactual engine with 5 verdicts, chaos generator over the whole catalogue, campaigns with a worker pool. |
+| chronos-cli | Hand-written CLI (run with `--fault`, ls, show, inspect, session with `run-to`, verify, determinism, branch/counterfactual with every intervention, compare, causes, campaign, report, delete, demo), HTML report, flagship demo. |
+| chronos-bench | JMH benchmarks, whole-system harness (B1-B14, million-event run, soak, NFR-01, evaluation), build-rule checks, `tools/benchmarks_md.py` (generates `docs/BENCHMARKS.md`). |
 
-Totals: about 8,700 lines of main code and 2,800 lines of tests. The git history is on `main`, local only (see `git log`).
+Local git history on `main` (see `git log`); no remote.
 
 ## Acceptance demonstrations and known-answer scenarios
 
@@ -55,39 +58,38 @@ Details and the interpretation of AD-4/AD-5 (branch at the partition's injection
 
 Full matrix: `docs/TRACEABILITY.md`. The important ones:
 
-* **NOT IMPLEMENTED:** pause/resume, clock-skew, reorder and slow-link faults; "after named event" and "on state" fault triggers;
-  intervention types other than remove-fault, shift-heal, drop, delay, duplicate, crash; intervention search over the causal past
-  (FR-38, Stretch); the live viewer (FR-50, Stretch); the knowledge view; node-local replay; persisted index files; the blind
-  debugging protocol and evaluation chapter (need a second person); Linux and Windows verification.
-* **SIMPLIFIED:** stepped replay with breakpoints is an API (`ReplayEngine.runUntil`), not a CLI command; `DIFFERENT_FAILURE` uses
-  the invariant name and the set of fields read; world images are canonical JSON trees; NFR-01 was run as 200 seeds per scenario in
-  the tests (10,000 for the control in the soak), not 1,000 per scenario for every demo.
-* **Targets missed:** NFR-07 (replay within 2x) is **missed at 10,085 events (2.23x)**, met at 100,733 (1.88x) and 1,018,235 (1.76x).
+* **NOT IMPLEMENTED:** the "on node state" fault trigger, intervention search over the causal past (FR-38), the live viewer (FR-50),
+  the knowledge view, node-local replay, consistent cuts (all Stretch/Could), persisted index files, the **blind** debugging protocol
+  (needs a second person), verification on Windows.
+* **SIMPLIFIED:** `DIFFERENT_FAILURE` uses the invariant name and the set of fields read (DEV-08); world images are canonical JSON trees;
+  `maxFirings` is validated only; the evaluation is not blind (`docs/EVALUATION.md`).
+* **Targets:** all of NFR-01 and NFR-05 to NFR-09 were measured and met (`docs/BENCHMARKS.md`).
 
 ## Deviations from the specification
 
-Ten interpretations, four extensions and six simplifications are recorded in `docs/DEVIATIONS.md` (DEV-01 to DEV-20). The ones a
-reviewer should look at first: **DEV-03** (OMISSION scope for partitions also requires the node to have heard from the other
-side), **DEV-02** (digest parent ids exclude PROGRAM_ORDER), **DEV-11** (heal-enabled FAULT edge), **DEV-10** (AD-4/AD-5 branch point).
+Interpretations, extensions, semantics for the later catalogue items and simplifications are recorded in `docs/DEVIATIONS.md`
+(DEV-01 to DEV-29). The ones a reviewer should look at first: **DEV-03** (OMISSION scope for partitions also requires the node to have
+heard from the other side), **DEV-02** (digest parent ids exclude PROGRAM_ORDER), **DEV-11** (heal-enabled FAULT edge), **DEV-10**
+(AD-4/AD-5 branch point).
 
 ## Defects found by the tests and fixed (for the record)
 
-1. **Path tie-break (real defect):** an explanation path could consist of a bare env PROGRAM_ORDER hop instead of the OMISSION chain
-   (found by the anchor-rule comparator test) -> ties now prefer fewer PROGRAM_ORDER hops (DEV-09).
+1. **Path tie-break:** an explanation path could be a bare env PROGRAM_ORDER hop instead of the OMISSION chain (anchor-rule comparator test) -> DEV-09.
 2. **`why` omitted faults that fire at send time** (KA-2: the delay never appeared) -> faults and interventions are always listed as sources.
-3. **Duplicate env identities** when a message was duplicated more than once (found by the 10,000-seed chaos soak) -> per-copy identities (DEV-12).
-4. **Verifier false mismatch** on trailing silent steps (found by the chaos soak on ping-pong) -> replay runs to the same end (DEV-13).
-5. **Bad citizen could coincidentally replay** (1-in-2,400 collision on Apple Silicon's clock granularity, seen once in `CliTest`) -> more entropy (1e-6).
-6. Several **wrong test assumptions** were corrected after checking the actual semantics, not by loosening the assertion
-   (the cost rule makes `[A#2, A#3]` the correct cheapest path; "cone within D"; a tampered commit line vs an event line; checkpoint intervals).
+3. **Duplicate env identities** when a message was duplicated more than once (10,000-seed chaos soak) -> per-copy identities (DEV-12).
+4. **Verifier false mismatch** on trailing silent steps (chaos soak) -> replay runs to the same end (DEV-13).
+5. **A checkpoint did not remember its run had stopped**, so a resumed replay ran past the recording (test of replay from every checkpoint of a stopped run) -> DEV-21.
+6. **Bad citizen could coincidentally replay** (1-in-2,400 clock collision, seen once) -> more entropy (1e-6).
+7. Wrong test assumptions were corrected after checking the actual semantics, not by loosening assertions.
 
 ## Known limitations and risks
 
-* Lengthening a partition leaves the extra drops without a causal link to the intervention (M10 is tested for shorten/drop/delay); see `docs/DEVIATIONS.md`.
-* `TimeTravelSession.world()` scans the log prefix (linear in position; 200 ms at 1M events) instead of starting at the nearest checkpoint.
-* Verified on one machine and one OS. The first full benchmark run accidentally used JDK 26 and was discarded and redone on JDK 21;
-  anyone running the jars must set `JAVA_HOME` to JDK 21 (the build refuses otherwise; the jars themselves run on any JDK >= 21).
+* Roots that cannot be linked causally to an intervention exist for lengthened partitions (explained inputs, DEV-28) and for config/reseed
+  interventions (DEV-29); M10 is tested with those documented exceptions.
+* Verified on macOS and Linux; Windows is not verified. The first full benchmark run accidentally used JDK 26 and was discarded and redone
+  on JDK 21; anyone running the jars must set `JAVA_HOME` to JDK 21 for the build (the jars themselves run on any JDK >= 21).
 * Replay-code-version checking is a declared version plus a best-effort class hash, with a warning on mismatch (Q7).
+* Timings are from one machine (Apple M2 Max).
 
 ## Open specification questions
 
@@ -97,11 +99,10 @@ side), **DEV-02** (digest parent ids exclude PROGRAM_ORDER), **DEV-11** (heal-en
 
 ## Next highest-priority actions (if work continues)
 
-1. Decide DEV-03 with the other author (keep the refined OMISSION scope or revert to the literal 12a rule).
-2. Expose `ReplayEngine.runUntil` as a CLI/session `run-to` command; start `world()` from the nearest checkpoint.
-3. Pause, clock-skew and reorder faults, and the remaining interventions (Phase 12b/13b depth).
-4. Run the blind-debugging evaluation with a second person and write the evaluation chapter (Phase 17).
-5. Verify on Linux/Windows; then, after the project is judged complete, create the GitHub repository (deliberately **not** done: no remote exists and nothing was pushed).
+1. Run the blind-debugging evaluation with a second person and write the evaluation chapter (Phase 17).
+2. Remaining Stretch items: intervention search over the causal past, the live viewer, node-local replay, "on state" trigger, consistent cuts, knowledge view.
+3. Decide DEV-03 with the other author (keep the refined OMISSION scope or revert to the literal 12a rule).
+4. Verify on Windows; then, after the project is judged complete, create the GitHub repository (deliberately **not** done: no remote exists and nothing was pushed).
 
 ## How to resume safely
 
@@ -109,7 +110,7 @@ side), **DEV-02** (digest parent ids exclude PROGRAM_ORDER), **DEV-11** (heal-en
 cd /Users/arunhbk/Desktop/Chronos
 git status && git log --oneline           # local repository, branch main, no remote
 export JAVA_HOME=$(/usr/libexec/java_home -v 21)
-mvn -ntp clean package                    # must end in BUILD SUCCESS with 119 tests
+mvn -ntp clean package                    # must end in BUILD SUCCESS with 136 tests
 java -jar chronos-cli/target/chronos.jar --data chronos-data demo     # 24 of 24 checks
 ```
 

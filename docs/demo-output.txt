@@ -31,12 +31,12 @@ AD-2  Replay the run and show identical event-log hashes; then run a deliberatel
   two independent runs: hash 72844fa1c8b1b05da143ff02940a762091e20a2facf257183cdd3ba51a32e20f == 72844fa1c8b1b05da143ff02940a762091e20a2facf257183cdd3ba51a32e20f
   [PASS] running RE twice gives byte-identical logs
 recorded T1: bad seed=1  -> TIMED_OUT, 5 events, final virtual time 10 ms
-  log hash 80507c48e22cb7fb604f7b4ac3184322244ae62d66a7f87bfe785421bc0e2e7b   stored under chronos-data/timelines/T1
-  DETERMINISM VIOLATION: mismatch at B#3: expected a timer due at 660457 ms, got 831462 ms
+  log hash c4405c8ec9f6f9f9d826f216051e6b96f0ed94a19fb568e288d57f1ff4b5cd83   stored under chronos-data/timelines/T1
+  DETERMINISM VIOLATION: mismatch at B#3: expected a timer due at 91623 ms, got 759735 ms
     last matching event : B#2
-    expected            : {"id":"B#3","kind":"TIMER_SET","l":4,"node":"B","p":[["B#2","PROGRAM_ORDER"],["B#2","STEP_EFFECT"]],"pl":{"due":660457,"name":"hidden-delay"},"seq":4,"tl":"T1","v":[2,3,0],"vt":10}
-    actual              : {"id":"B#3","kind":"TIMER_SET","l":4,"node":"B","p":[["B#2","PROGRAM_ORDER"],["B#2","STEP_EFFECT"]],"pl":{"due":831462,"name":"hidden-delay"},"seq":4,"tl":"T1","v":[2,3,0],"vt":10}
-    difference          : payload.due: expected 660457 got 831462
+    expected            : {"id":"B#3","kind":"TIMER_SET","l":4,"node":"B","p":[["B#2","PROGRAM_ORDER"],["B#2","STEP_EFFECT"]],"pl":{"due":91623,"name":"hidden-delay"},"seq":4,"tl":"T1","v":[2,3,0],"vt":10}
+    actual              : {"id":"B#3","kind":"TIMER_SET","l":4,"node":"B","p":[["B#2","PROGRAM_ORDER"],["B#2","STEP_EFFECT"]],"pl":{"due":759735,"name":"hidden-delay"},"seq":4,"tl":"T1","v":[2,3,0],"vt":10}
+    difference          : payload.due: expected 91623 got 759735
     likely cause        : a timing difference suggests hidden use of time or randomness
   [PASS] the bad citizen (reads the system clock) is flagged at its first mismatching event
 

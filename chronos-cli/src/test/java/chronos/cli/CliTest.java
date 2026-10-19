@@ -150,13 +150,16 @@ class CliTest {
     void sessionCommandsReadFromStdinAndGoingLiveCreatesABranch() {
         cli("run", "re", "--no-stop");
         String script = String.join("\n", "goto violation", "why", "back 3", "world", "find kind=timer_fired node=b back", "watch b.volatile.role", "inflight", "timers",
-                "goto fault:partition-pb#1", "branch --heal-earlier 200 --quiet", "state b", "diff T0", "bogus", "quit", "");
+                "run-to kind=timer_fired node=b", "run-to time=500 node=p", "run-to text=nothing-like-this", "goto fault:partition-pb#1", "branch --heal-earlier 200 --quiet", "state b", "diff T0", "bogus", "quit", "");
         R r = cliIn(script, "session", "T0");
         assertEquals(0, r.code(), r.err());
         assertTrue(r.out().contains("> goto violation") && r.out().contains("chain from fault:partition-pb#1"), r.out());
         assertTrue(r.out().contains("VERDICT: FAILURE_DISAPPEARS") && r.out().contains("switched to T0.1"), r.out());
         assertTrue(r.out().contains("b#12") && r.out().contains("\"BACKUP\" -> \"PRIMARY\""), r.out());
         assertTrue(r.out().contains("error: unknown session command 'bogus'"));
+        assertTrue(r.out().contains("breakpoint hit at b#12") && r.out().contains("equals the state reconstructed from the log") && !r.out().contains("MISMATCH"), r.out());
+        assertTrue(r.out().contains("no event matched; the replay ran to the end"), r.out());
+        assertTrue(r.out().contains("breakpoint hit at p#2"), "a breakpoint on virtual time: " + r.out());
         assertTrue(r.out().contains("diff T0.1@") && r.out().contains(" vs T0@"), "after going live the session is on the branch: " + r.out());
     }
 
@@ -206,5 +209,44 @@ class CliTest {
         for (String ad : List.of("AD-1", "AD-2", "AD-3", "AD-4", "AD-5", "AD-6")) assertTrue(r.out().contains(ad + "  "), ad);
         assertFalse(r.out().contains("[FAIL]"), r.out());
         assertTrue(Files.exists(tmp.resolve("data/reports")));
+    }
+
+    @Test
+    void theWholeFaultAndInterventionCatalogueIsAvailableOnTheCommandLine() {
+        R pause = cli("run", "re", "--param", "partition=off", "--fault", "pause:p:300:400", "--no-stop");
+        assertEquals(0, pause.code(), pause.err());
+        assertTrue(pause.out().contains("INVARIANT VIOLATED: single-primary") && pause.out().contains("fault:f1-pause#1") && pause.out().contains("OMISSION"), pause.out());
+        R part = cli("run", "re", "--plan", "none", "--fault", "partition:300:400:p|b", "--no-stop");
+        assertTrue(part.out().contains("INVARIANT VIOLATED") && part.out().contains("fault:f1-partition#1"), part.out());
+        R reorder = cli("run", "ka2", "--param", "delay=off", "--fault", "reorder:p:b:Replicate:1");
+        assertTrue(reorder.out().contains("replicas-converge") && reorder.out().contains("fault:f1-reorder#1"), reorder.out());
+        R after = cli("run", "ka3", "--param", "crash=off", "--fault", "after:coord#3:crash:coord");
+        assertTrue(after.out().contains("no-blocked-participant"), after.out());
+        R slow = cli("run", "ka2", "--param", "delay=off", "--fault", "slow:p:b:5:0", "--no-stop");
+        assertEquals(0, slow.code());
+        assertTrue(slow.out().contains("fault coverage: {f1-slow=1}"), slow.out());
+        R skew = cli("run", "re", "--fault", "skew:b:100:500:200");
+        assertEquals(0, skew.code(), skew.err());
+        for (String bad : List.of("frobnicate:x", "pause:p:300", "crash:p:abc"))
+            assertEquals(1, cli("run", "re", "--fault", bad).code(), bad);
+        assertEquals(1, cli("run", "re", "--fault", "crash:ghost:5").code());
+
+        // interventions on a healthy baseline (T? is the 'partition=off' run)
+        cli("run", "re", "--param", "partition=off", "--no-stop");
+        String healthy = "T" + (cli("ls").out().lines().filter(l -> l.matches("T\\d+ .*")).count() - 1);
+        R p = cli("branch", healthy, "--pause", "p:310:400", "--quiet");
+        assertEquals(0, p.code(), p.err());
+        assertTrue(p.out().contains("VERDICT: DIFFERENT_FAILURE"), p.out());
+        R ps = cli("branch", healthy, "--patch-state", "b:volatile.role=PRIMARY", "--at", "30", "--quiet");
+        assertTrue(ps.out().contains("synthetic") && ps.out().contains("DIFFERENT_FAILURE"), ps.out());
+        R cfg = cli("branch", healthy, "--config", "watchdog=100", "--at", "20", "--quiet");
+        assertEquals(0, cfg.code(), cfg.err());
+        R badInput = cli("branch", healthy, "--remove-input", "99");
+        assertEquals(1, badInput.code());
+        assertTrue(badInput.err().contains("no pending client input"), badInput.err());
+        assertEquals(1, cli("branch", healthy, "--add-input", "client:300").code());
+        assertEquals(1, cli("branch", healthy, "--pause", "p:300").code());
+        R add = cli("branch", healthy, "--add-input", "client:700:{\"op\":\"write\",\"key\":\"q\",\"value\":5}", "--quiet");
+        assertEquals(0, add.code(), add.err());
     }
 }

@@ -1086,6 +1086,15 @@ public final class Engine {
                 faults.addRule(r, origin);
                 scheduleRule(r);
             }
+            case Intervention.RESTART_NODE -> {
+                String node = (String) p.get("node");
+                long at = Canon.num(p.get("at"));
+                if (!byName.containsKey(node)) throw new IllegalArgumentException("intervention " + iv.id() + ": unknown node " + node);
+                if (at < time) throw new IllegalArgumentException("intervention " + iv.id() + ": cannot restart a node in the past");
+                FaultRule r = FaultRule.restart("iv_" + iv.id(), node, at);
+                faults.addRule(r, origin);
+                scheduleRule(r);
+            }
             case Intervention.PAUSE_NODE -> {
                 String node = (String) p.get("node");
                 long at = Canon.num(p.get("at")), dur = Canon.num(p.get("duration"));

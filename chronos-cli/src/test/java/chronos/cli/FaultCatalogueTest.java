@@ -199,6 +199,22 @@ class FaultCatalogueTest {
     }
 
     @Test
+    void aCrashedNodeCanBeRestartedByAnIntervention() {
+        Env env = env();
+        env.record("control", 3, Map.of(), FaultPlan.of(FaultRule.crash("kill-src", "src", 200)), Boolean.FALSE);
+        String t0 = env.last;
+        long at = env.manager.roundToBoundary(t0, env.events(t0).stream().filter(e -> e.kind() == EventKind.NODE_CRASHED).findFirst().orElseThrow().seq());
+        long vt = env.events(t0).get((int) at).virtualTime();
+        var br = env.manager.branch(t0, at, List.of(Intervention.restartNode("revive", "src", vt + 100)), null, null);
+        List<Event> child = env.events(br.timelineId());
+        Event restarted = child.stream().filter(e -> e.kind() == EventKind.NODE_RESTARTED).findFirst().orElseThrow();
+        assertEquals("iv_revive", restarted.parents().stream().filter(p -> p.kind() == EdgeKind.FAULT).map(p -> p.id().startsWith("fault:") ? "iv_revive" : p.id()).findFirst().orElseThrow());
+        assertEquals("iv:revive", restarted.origin());
+        assertTrue(child.stream().anyMatch(e -> e.nodeId().equals("src") && e.kind() == EventKind.MESSAGE_SENT && e.virtualTime() > vt + 100), "src works again after the restart");
+        assertReplays(env, br.timelineId());
+    }
+
+    @Test
     void addingAndRemovingClientInputsAndSwappingDeliveries() {
         Env env = env();
         env.record("ka2", 1, Map.of("delay", "off"), null, null);

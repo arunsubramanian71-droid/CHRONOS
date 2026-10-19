@@ -75,9 +75,12 @@ orders roots by virtual time, node order (env last) and event id, and never comp
 
 * *Why a simulation instead of tracing real Java programs?* Decision D-01: replaying arbitrary Java needs control over threads, clocks,
   I/O and native code; applications are written against the small Node API instead.
-* *What is not implemented?* See `docs/DEVIATIONS.md` ("Not implemented") and the NOT IMPLEMENTED rows of `docs/TRACEABILITY.md`: pause,
-  clock-skew and reorder faults, the live viewer, intervention search over the causal past, the blind evaluation with a second person.
-* *Did the tests find real bugs?* Yes: the chaos soak found a duplicate-identity collision for repeated duplicates and a verifier
-  false mismatch on trailing silent steps (`docs/DEVIATIONS.md` DEV-12, DEV-13), and the comparator tests led to the path tie-break
-  rule (DEV-09).
+* *What is not implemented?* See `docs/DEVIATIONS.md` ("Not implemented") and the NOT IMPLEMENTED rows of `docs/TRACEABILITY.md`: the live
+  viewer, intervention search over the causal past, the "on node state" trigger, the blind evaluation with a second person, Windows verification.
+* *Did the tests find real bugs?* Yes, four: the chaos soak found a duplicate-identity collision for repeated duplicates and a verifier
+  false mismatch on trailing silent steps (`docs/DEVIATIONS.md` DEV-12, DEV-13); testing replay from every checkpoint found that a
+  checkpoint did not remember its run had stopped (DEV-21); the comparator tests led to the path tie-break rule (DEV-09).
+* *How do you know the explanations are right on bugs you did not plant?* `docs/EVALUATION.md`: 800 chaos runs, 100 failures, a root fault
+  named in 94, and for 73 of them removing exactly that fault by a real counterfactual made the failure disappear; and what that does
+  not show (it is not blind).
 * *Are the benchmark numbers trustworthy?* They were measured on one machine with the method of Section 26 (`docs/BENCHMARKS.md`).

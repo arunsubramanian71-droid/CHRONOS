@@ -40,34 +40,45 @@ D-01 to D-22 "Approved" but D-23 to D-26 "New in v0.2". All four were implemente
 | DEV-13 | The verifier runs a replay to the same end as the original, including trailing steps that recorded nothing. | Found by the chaos soak: a restart rule for a node that was not crashed advances virtual time without an event, so comparing end states at the last event gave a false mismatch. Any event produced by a trailing step is a genuine mismatch. |
 | DEV-14 | `CounterfactualEngine.findCriticalFaultSets` removes every single fault rule, then every pair, and lists the minimal critical sets. | Bounded form of Phase 14b "KA-4 reports FAILURE_PERSISTS and lists both causes". It searches over **fault rules**, not over every event of the causal past, so FR-38 (intervention search, Stretch) is still not implemented. |
 
+## Semantics chosen for the fault and intervention catalogue (added after the first delivery)
+
+| ID | Choice |
+|---|---|
+| DEV-21 | **A checkpoint remembers that its run stopped.** A resumed verification replay from the final checkpoint of a run that stopped on a violation used to continue past the end of the recording (found by testing replay from every checkpoint). The image now records the pending stop and `ReplayEngine` restores it for verification; **branching deliberately does not**, so going live from the end of a stopped timeline continues. |
+| DEV-22 | **PAUSE** holds a frozen node's agenda items (deliveries, timers, inputs) until it resumes and runs them then, in their stable order; the resume item is ordered with the node's own items so it precedes them. A crash ends a pause. The OMISSION scope for pause is the crash scope (the node waiting must have heard from the paused one). |
+| DEV-23 | **CLOCK_SKEW** changes only `NodeContext.now()`; recorded virtual times and the logical clocks do not change (tested: Lamport and vector values are identical with and without skew). It records a FAULT event but no causal edge, because the engine cannot know which later events *read* the clock. |
+| DEV-24 | **SLOW_LINK** is a persistent, link-wide DELAY: deliveries take `factor` times their latency, implemented as extra delay after the recorded latency (so replay stays exact), and each affected delivery has the fault as a FAULT parent. |
+| DEV-25 | **REORDER** (`ON_NTH_MESSAGE`) swaps the n-th and the (n+1)-th message of a link: the n-th is held until just after the (n+1)-th; the held delivery carries the reorder fault as a FAULT parent. If the n-th has already been delivered, nothing happens and nothing is recorded. |
+| DEV-26 | **AFTER_EVENT trigger** fires a time-triggered action immediately after the named event is recorded (the fault's parent is that event). "On node state" (Stretch) is not implemented. |
+| DEV-27 | **PATCH_STATE** (the one synthetic intervention) carries the node's new state in the `INTERVENTION_APPLIED` event itself, becomes the last writer of the field (so it is a WITNESS of a violation it causes), and marks the timeline and all its descendants synthetic (`TimelineManager.isSynthetic`; reports say so). |
+| DEV-28 | **Lengthening a partition** (`SHIFT_HEAL` with a positive shift): the extra drops get a FAULT edge from the intervention and its origin. A branch root can remain that is not in the intervention's causal future: the target node's *later* events differ because earlier deliveries were dropped (an input difference). `LawsTest`/`FaultCatalogueTest` assert that every such root is either in the future or explained by a drop the intervention caused. |
+| DEV-29 | **CONFIG_PATCH** and **RESEED_STREAM** change behaviour from the branch point on without an edge from the intervention to the events that read the new value (the engine cannot know which handler reads what); the comparator therefore reports the changed events as roots in the branch (all other node events follow from them by taint). |
+
 ## Simplifications (SIMPLIFIED in the traceability matrix)
 
 | ID | What is simplified |
 |---|---|
 | DEV-15 | World images (checkpoints) are canonical JSON trees built by the runtime (`WorldImage` holds an opaque map), not typed record hierarchies. Completeness is enforced by law M5, tested at every checkpoint of every demo. |
 | DEV-16 | Indexes by position, node, kind and virtual time (FR-18) are built in memory from the log when a timeline is opened (`TimelineIndex`); they are not persisted under `index/`. They are derived and rebuildable either way. |
-| DEV-17 | Stepped replay with breakpoints (R3/FR-24) is available as `ReplayEngine.runUntil` and is tested, but is not exposed as a CLI command (the session offers `find`, `watch`, `diff`, `branch`). |
+| DEV-17 | Stepped replay with breakpoints (R3/FR-24) is `ReplayEngine.runUntil` and the session command `run-to` (breakpoints on an event kind, node, text, virtual time or the violation); there is no separate stepping UI. |
 | DEV-18 | The HTML report draws at most the first 600 events in the SVG diagram and 3,000 table rows. |
 | DEV-19 | `maxFirings` on fault rules is validated (allowed only on time-triggered rules) but time-triggered rules fire once, so it is not enforced as a counter. |
 | DEV-20 | Persisted storage uses one writer thread per recording and fsync-free flushes per step group: a crashed *process* leaves a readable log (tested by killing a real process); durability against power loss is not claimed. |
 
 ## Not implemented (NOT IMPLEMENTED)
 
-Pause/resume, clock-skew, reorder and slow-link faults; the "after named event" and "on node state" triggers; interventions that
-reorder deliveries, add/remove client inputs, change configuration, reseed a stream or patch node state (the last is the only
-*synthetic* one, so no synthetic timeline exists); the Pinned continuation policy (deferred by D-15); node-local replay R5
-(Stretch); intervention search over the causal past FR-38 (Stretch); consistent cuts (Stretch); the live local viewer FR-50
-(Stretch, D-18); the knowledge view (Could); log compression (cut line); the blind debugging protocol and the evaluation chapter
-of Phase 17 (they need a second person); verification on Linux and Windows.
+The "on node state" fault trigger (Stretch); the Pinned continuation policy (deferred by D-15); node-local replay R5 (Stretch);
+intervention search over the causal past FR-38 (Stretch; `findCriticalFaultSets` over fault *rules* is the bounded form, DEV-14);
+consistent cuts (Stretch); the live local viewer FR-50 (Stretch, D-18); the knowledge view (Could); log compression (cut line);
+persisted index files; the blind debugging protocol of Phase 17 (it needs a second person); verification on **Windows**.
+(macOS and Linux were verified; see `IMPLEMENTATION_STATUS.md`.)
 
 ## Known limitations of what *is* implemented
 
-* **Lengthening a partition.** `SHIFT_HEAL` with a positive shift keeps the partition active longer; the extra drops it causes
-  are not causally linked to the intervention, so the comparator lists them as additional roots. Law M10 is therefore tested
-  for shortening, dropping and delaying interventions (documented in `LawsTest`).
 * **Roots from the baseline.** In a baseline-versus-branch comparison the baseline-side roots (for example the watchdog that fired
   only in the baseline) are baseline events the intervention replaced; M10's "every root lies in the intervention's causal future"
-  is tested for the roots *in the branch*.
+  is tested for the roots *in the branch* (with the explained-input exception of DEV-28 and the unlinked-behaviour interventions of DEV-29).
 * **A baseline that stops at its first violation** (the default `stopOnViolation`) ends earlier than the branch, so the branch's
   tail appears as `Extra` roots ("one timeline ends earlier", Section 20). The demo records its baseline with `--no-stop`.
 * **Wall-clock numbers** in `docs/BENCHMARKS.md` come from one machine (Apple M2 Max, JDK 21).
+* **Evaluation is not blind** (`docs/EVALUATION.md`).

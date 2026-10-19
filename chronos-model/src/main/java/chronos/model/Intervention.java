@@ -15,6 +15,7 @@ import java.util.TreeMap;
  *   DELAY_MESSAGE  messageId, by               delay a named message by "by" ms
  *   DUPLICATE_MESSAGE messageId                deliver a named message twice
  *   CRASH_NODE     node, at                    crash a node at a virtual time
+ *   RESTART_NODE   node, at                    restart a crashed node at a virtual time
  *   PAUSE_NODE     node, at, duration          freeze a node (its items are held until it resumes)
  *   SKEW_CLOCK     node, at, offset [duration] change the time a node reads (logical clocks do not change)
  *   ADD_INPUT      node, at, body              add a scripted client input
@@ -31,6 +32,7 @@ public record Intervention(String id, String type, Map<String, Object> params) {
     public static final String DELAY_MESSAGE = "DELAY_MESSAGE";
     public static final String DUPLICATE_MESSAGE = "DUPLICATE_MESSAGE";
     public static final String CRASH_NODE = "CRASH_NODE";
+    public static final String RESTART_NODE = "RESTART_NODE";
     public static final String PAUSE_NODE = "PAUSE_NODE";
     public static final String SKEW_CLOCK = "SKEW_CLOCK";
     public static final String ADD_INPUT = "ADD_INPUT";
@@ -88,6 +90,10 @@ public record Intervention(String id, String type, Map<String, Object> params) {
 
     public static Intervention crashNode(String id, String node, long at) {
         return new Intervention(id, CRASH_NODE, Map.of("node", node, "at", at));
+    }
+
+    public static Intervention restartNode(String id, String node, long at) {
+        return new Intervention(id, RESTART_NODE, Map.of("node", node, "at", at));
     }
 
     public static Intervention pauseNode(String id, String node, long at, long duration) {

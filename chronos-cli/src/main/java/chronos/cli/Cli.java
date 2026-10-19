@@ -24,7 +24,10 @@ final class Cli {
 
               scenarios                                   list the registered scenarios
               run <scenario> [--seed N] [--param k=v]... [--plan default|none|chaos] [--horizon MS] [--no-stop]
-                                [--timeline ID] [--checkpoint-every K]        record a run as a new timeline
+                                [--timeline ID] [--checkpoint-every K] [--fault SPEC]...        record a run as a new timeline
+                  --fault SPEC adds a fault rule: partition:AT:DUR:a,b|c  crash:NODE:AT  restart:NODE:AT  pause:NODE:AT:DUR
+                  skew:NODE:AT:OFFSET[:DUR]  slow:FROM:TO:FACTOR:AT[:DUR]  drop:MSGID  delay:MSGID:MS  dup:MSGID
+                  reorder:FROM:TO:TYPE:N  after:EVENT:crash:NODE  after:EVENT:pause:NODE:DUR
               ls                                          the timeline tree
               show <timeline> [--table|--diagram|--dot|--json] [--limit N]    print the recorded history
               inspect <timeline> [--goto violation|SEQ|EVENT] [--back N] [--step N] [--state NODE]... [--world]
@@ -34,7 +37,9 @@ final class Cli {
               determinism <scenario> [--seed N] [--param k=v]... [--jvm N]    run twice (and in N fresh JVMs), compare log hashes
               branch|counterfactual <timeline> [--at SEQ|EVENT|violation] [--horizon MS] [--label TEXT]
                                 [--heal-earlier MS | --heal-later MS [--rule R]] [--remove-fault R] [--drop MSG]
-                                [--delay MSG:MS] [--duplicate MSG] [--crash NODE:AT]...       run a what-if, print the verdict
+                                [--delay MSG:MS] [--duplicate MSG] [--crash NODE:AT] [--restart NODE:AT] [--pause NODE:AT:DUR] [--skew NODE:AT:OFFSET[:DUR]]
+                                [--add-input NODE:AT:JSON] [--remove-input INDEX] [--swap MSG:MSG] [--config KEY=VALUE]
+                                [--reseed NODE:STREAM:SEED] [--patch-state NODE:volatile.field=VALUE (synthetic)]...   run a what-if, print the verdict
               compare <A> <B> [--strict]                  first causal divergence, cone and explanation path
               causes <timeline> [--max-size K] [--threads N]    which fault rules are critical (combinations)
               campaign <scenario> --seeds A-B [--threads N] [--chaos] [--param k=v]... [--keep]
@@ -127,8 +132,12 @@ final class Cli {
 
     private int run(Args a) {
         String scenario = a.positional(0, "scenario");
+        extraFaults = new ArrayList<>();
+        int n = 0;
+        for (String spec : a.all("fault")) extraFaults.add(parseFault(spec, ++n));
         record(scenario, a.num("seed", 42), params(a), a.get("plan", a.has("chaos") ? "chaos" : "default"), a.has("horizon") ? a.num("horizon", 0) : null,
                 a.has("no-stop") ? Boolean.FALSE : null, a.num("checkpoint-every", 25), a.get("timeline"));
+        extraFaults = List.of();
         return 0;
     }
 
@@ -142,6 +151,11 @@ final class Cli {
             case "chaos" -> ChaosPlanGenerator.generate(sc, seed, h);
             default -> throw new CliException("--plan must be default, none or chaos");
         };
+        if (!extraFaults.isEmpty()) {
+            FaultPlan base = plan != null ? plan : sc.defaultFaultPlan();
+            for (FaultRule r : extraFaults) base = base.with(r);
+            plan = base;
+        }
         String id = timelineId != null ? timelineId : manager.allocateRootId();
         Recording.Spec spec = Recording.Spec.of(scenario, seed).withParams(params).withPlan(plan).withHorizon(horizon).withStopOnViolation(stop).withCheckpointInterval(ckpt);
         RunResult r = Recording.record(store, registry, id, spec);
@@ -160,6 +174,36 @@ final class Cli {
     }
 
     String lastTimeline;
+    private List<FaultRule> extraFaults = List.of();
+
+    /** Parses a --fault specification into a rule (ids are generated: f1, f2, ...). */
+    FaultRule parseFault(String spec, int n) {
+        String[] p = spec.split(":");
+        String id = "f" + n + "-" + p[0];
+        try {
+            return switch (p[0]) {
+                case "partition" -> {
+                    List<List<String>> groups = new ArrayList<>();
+                    for (String g : p[3].split("\\|")) groups.add(List.of(g.split(",")));
+                    yield FaultRule.partition(id, Long.parseLong(p[1]), p[2].isEmpty() ? null : Long.parseLong(p[2]), groups);
+                }
+                case "crash" -> FaultRule.crash(id, p[1], Long.parseLong(p[2]));
+                case "restart" -> FaultRule.restart(id, p[1], Long.parseLong(p[2]));
+                case "pause" -> FaultRule.pause(id, p[1], Long.parseLong(p[2]), Long.parseLong(p[3]));
+                case "skew" -> FaultRule.clockSkew(id, p[1], Long.parseLong(p[2]), Long.parseLong(p[3]), p.length > 4 ? Long.parseLong(p[4]) : null);
+                case "slow" -> FaultRule.slowLink(id, p[1], p[2], Long.parseLong(p[3]), Long.parseLong(p[4]), p.length > 5 ? Long.parseLong(p[5]) : null);
+                case "drop" -> FaultRule.onMessage(id, FaultRule.FaultAction.DROP, spec.substring(5), null);
+                case "dup" -> FaultRule.onMessage(id, FaultRule.FaultAction.DUPLICATE, spec.substring(4), null);
+                case "delay" -> FaultRule.onMessage(id, FaultRule.FaultAction.DELAY, p[1], Long.parseLong(p[2]));
+                case "reorder" -> FaultRule.reorder(id, p[1], p[2], p[3], Long.parseLong(p[4]));
+                case "after" -> p[2].equals("crash") ? FaultRule.after(id, p[1], FaultRule.FaultAction.CRASH, Map.of("node", p[3]))
+                        : FaultRule.after(id, p[1], FaultRule.FaultAction.PAUSE, Map.of("node", p[3], "duration", Long.parseLong(p[4])));
+                default -> throw new CliException("unknown fault kind '" + p[0] + "' in --fault " + spec);
+            };
+        } catch (ArrayIndexOutOfBoundsException | NumberFormatException e) {
+            throw new CliException("malformed --fault " + spec + " (see: chronos help)");
+        }
+    }
 
     // ------------------------------------------------------------------------------------------------------------
     // inspecting
@@ -256,9 +300,9 @@ final class Cli {
         String c = t[0];
         String arg = t.length > 1 ? t[1] : null;
         switch (c) {
-            case "help" -> out.println("  goto <seq|event|violation>  step [n]  back [n]  next-on <node>  prev-on <node>  find <kind=K|node=N|text=S|violation> [back]\n"
+            case "help" -> out.println("  goto <seq|event|violation>  step [n]  back [n]  next-on <node>  prev-on <node>  find <kind=K|node=N|text=S|time=MS|violation> [back]\n"
                     + "  state <node>  world  inflight  timers  why [event]  effects [event]  concurrent-with [event]  watch <node.zone.field>\n"
-                    + "  diff <timeline>  branch <intervention options as in 'chronos branch'>  quit");
+                    + "  diff <timeline>  run-to <find terms>  branch <intervention options as in 'chronos branch'>  quit");
             case "goto" -> goTo(s, need(arg, "goto <seq|event|violation>"));
             case "step" -> printEvent(s, s.step(arg == null ? 1 : Integer.parseInt(arg)));
             case "back" -> printEvent(s, s.back(arg == null ? 1 : Integer.parseInt(arg)));
@@ -285,6 +329,23 @@ final class Cli {
                     out.println("  " + ch.eventId() + " (position " + ch.position() + "): " + Canon.json(ch.before()) + " -> " + Canon.json(ch.after()));
             }
             case "diff" -> out.print(indent(s.diff(need(arg, "diff <timeline>")), "  "));
+            case "run-to" -> {
+                // stepped replay with a breakpoint (R3, FR-24): re-execute the application, verifying every event, and pause the LIVE world
+                java.util.function.Predicate<Event> p = findPredicate(Arrays.asList(t).subList(1, t.length), s);
+                ReplayEngine.PausedWorld w = manager.replayEngine().runUntil(s.timelineId(), p);
+                if (w.hit() == null) {
+                    out.println("  no event matched; the replay ran to the end of the recording (" + w.verified() + " events verified)");
+                } else {
+                    s.goToEvent(w.hit().eventId());
+                    out.println("  breakpoint hit at " + w.hit().eventId() + "; the live world is paused at the step boundary ending at position " + w.position() + " (" + w.verified() + " events verified so far)");
+                    TimeTravelSession atBoundary = new TimeTravelSession(store, s.timelineId());
+                    atBoundary.goTo((int) w.position());
+                    for (String n : store.header(s.timelineId()).nodes()) {
+                        boolean same = Canon.json(w.engine().stateOf(n)).equals(Canon.json(atBoundary.stateOf(n)));
+                        out.println("    live " + n + ": " + Canon.json(w.engine().stateOf(n)) + (same ? "   (equals the state reconstructed from the log)" : "   MISMATCH with the log"));
+                    }
+                }
+            }
             case "branch" -> {
                 // going live always creates a branch (Section 16): the cursor's step boundary is the branch point
                 List<String> rest = new ArrayList<>(Arrays.asList(t).subList(1, t.length));
@@ -311,8 +372,9 @@ final class Cli {
             if (term.equals("violation")) p = p.and(e -> e.kind() == EventKind.INVARIANT_VIOLATED);
             else if (term.startsWith("kind=")) { EventKind k = EventKind.valueOf(term.substring(5).toUpperCase()); p = p.and(e -> e.kind() == k); }
             else if (term.startsWith("node=")) { String n = term.substring(5); p = p.and(e -> e.nodeId().equals(n)); }
+            else if (term.startsWith("time=")) { long t0 = Long.parseLong(term.substring(5)); p = p.and(e -> e.virtualTime() >= t0); }
             else if (term.startsWith("text=")) { String x = term.substring(5).toLowerCase(); p = p.and(e -> Exports.describe(e, s.graph()).toLowerCase().contains(x)); }
-            else throw new CliException("find expects violation, kind=K, node=N or text=S, got '" + term + "'");
+            else throw new CliException("find expects violation, kind=K, node=N, time=MS or text=S, got '" + term + "'");
         }
         return p;
     }
@@ -421,7 +483,54 @@ final class Cli {
             if (p.length != 2) throw new CliException("--crash expects NODE:AT (for example b:2100)");
             out.add(Intervention.crashNode("crash-" + safe(p[0]), p[0], num(p[1], "--crash")));
         }
+        for (String v : a.all("restart")) {
+            String[] p = splitN(v, 2, "--restart NODE:AT");
+            out.add(Intervention.restartNode("restart-" + safe(p[0]), p[0], num(p[1], "--restart")));
+        }
+        for (String v : a.all("pause")) {
+            String[] p = splitN(v, 3, "--pause NODE:AT:DURATION");
+            out.add(Intervention.pauseNode("pause-" + safe(p[0]), p[0], num(p[1], "--pause"), num(p[2], "--pause")));
+        }
+        for (String v : a.all("skew")) {
+            String[] p = v.split(":");
+            if (p.length < 3) throw new CliException("--skew expects NODE:AT:OFFSET[:DURATION]");
+            out.add(Intervention.skewClock("skew-" + safe(p[0]), p[0], num(p[1], "--skew"), num(p[2], "--skew"), p.length > 3 ? num(p[3], "--skew") : null));
+        }
+        for (String v : a.all("add-input")) {
+            String[] p = v.split(":", 3);
+            if (p.length != 3) throw new CliException("--add-input expects NODE:AT:JSON (for example client:300:{\"op\":\"write\",\"key\":\"k\",\"value\":1})");
+            Map<String, Object> body = Canon.parseMap(p[2]);
+            out.add(Intervention.addInput("input-" + safe(p[0]) + "-" + p[1], p[0], num(p[1], "--add-input"), body));
+        }
+        for (String v : a.all("remove-input")) out.add(Intervention.removeInput("remove-input-" + v, num(v, "--remove-input")));
+        for (String v : a.all("swap")) {
+            String[] p = splitN(v, 2, "--swap MSG:MSG");
+            out.add(Intervention.swapDeliveries("swap-" + safe(p[0]), p[0], p[1]));
+        }
+        for (String v : a.all("config")) {
+            int eq = v.indexOf('=');
+            if (eq < 1) throw new CliException("--config expects KEY=VALUE");
+            out.add(Intervention.configPatch("config-" + v.substring(0, eq), v.substring(0, eq), v.substring(eq + 1)));
+        }
+        for (String v : a.all("reseed")) {
+            String[] p = splitN(v, 3, "--reseed NODE:STREAM:SEED");
+            out.add(Intervention.reseedStream("reseed-" + safe(p[0]), p[0], p[1], num(p[2], "--reseed")));
+        }
+        for (String v : a.all("patch-state")) {
+            int eq = v.indexOf('=');
+            String[] p = eq < 1 ? new String[0] : v.substring(0, eq).split(":", 2);
+            if (p.length != 2) throw new CliException("--patch-state expects NODE:volatile.field=VALUE");
+            String raw = v.substring(eq + 1);
+            Object val = raw.matches("-?\\d+") ? (Object) Long.parseLong(raw) : raw.equals("true") || raw.equals("false") ? (Object) Boolean.parseBoolean(raw) : raw;
+            out.add(Intervention.patchState("patch-" + safe(p[0]) + "-" + safe(p[1]), p[0], p[1], val));
+        }
         return out;
+    }
+
+    private static String[] splitN(String v, int n, String usage) {
+        String[] p = v.split(":");
+        if (p.length != n) throw new CliException("expected " + usage + ", got '" + v + "'");
+        return p;
     }
 
     private static String suffix(int n, List<Intervention> existing) {
@@ -460,12 +569,19 @@ final class Cli {
         long target = switch (iv.type()) {
             case Intervention.SHIFT_HEAL -> firstFaultEvent(es, (String) iv.params().get("ruleId"));
             case Intervention.REMOVE_FAULT -> firstFaultEvent(es, (String) iv.params().get("ruleId")) - 1;
-            case Intervention.CRASH_NODE -> {
+            case Intervention.CRASH_NODE, Intervention.RESTART_NODE, Intervention.PAUSE_NODE, Intervention.SKEW_CLOCK, Intervention.ADD_INPUT -> {
                 long at = Canon.num(iv.params().get("at"));
                 long last = 0;
                 for (Event e : es) if (e.virtualTime() < at) last = e.seq();
                 yield last;
             }
+            case Intervention.REMOVE_INPUT -> es.get(0).seq();
+            case Intervention.SWAP_DELIVERIES -> {
+                long last = 0;
+                for (Event e : es) if (e.eventId().equals(iv.params().get("a")) || e.eventId().equals(iv.params().get("b"))) last = Math.max(last, e.seq());
+                yield last;
+            }
+            case Intervention.CONFIG_PATCH, Intervention.RESEED_STREAM, Intervention.PATCH_STATE -> store.groupEnds(tl).get(store.groupEnds(tl).size() / 2);
             default -> {
                 String msg = (String) iv.params().get("messageId");
                 for (Event e : es) if (e.eventId().equals(msg)) yield e.seq() - 1;
