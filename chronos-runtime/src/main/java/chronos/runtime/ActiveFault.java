@@ -39,6 +39,11 @@ final class ActiveFault {
         return ga >= 0 && gb >= 0 && ga != gb;
     }
 
+    /** True if the node is on one side of this partition and some other node is on another side (the literal D-23 scope). */
+    boolean cutsOffFromAnother(String n) {
+        return kind.equals("partition") && groupOf(n) >= 0 && groups.size() >= 2;
+    }
+
     int groupOf(String n) {
         for (int i = 0; i < groups.size(); i++) if (groups.get(i).contains(n)) return i;
         return -1;

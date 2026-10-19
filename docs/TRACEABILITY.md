@@ -38,7 +38,7 @@ Paths are relative to the module's `src/main/java/chronos/<package>/`.
 | D-20 | Java 21, Maven, JUnit 5, JMH, hand-written fakes, own property generator | all poms; `EngineTest` `Fakes`; `SeededRandom` | `BuildRulesTest` | COMPLETE |
 | D-21 | Threads: engine single, one async writer, fixed worker pool | store `TimelineWriter`; analysis `CounterfactualEngine`, `Campaign` | `LawsTest.m12`, `TimelineStoreTest.theBoundedQueue...` | COMPLETE |
 | D-22 | Scenarios are Java classes registered by name | sdk `Scenario`, `ScenarioRegistry`; demo `DemoRegistry` | `CliTest`, `LawsTest.m1` | COMPLETE |
-| D-23 | OMISSION edge | runtime `FaultInjector.omissionSources`, `Engine.doTimer` | `AcceptanceTest.ad1`, `KnownAnswerTest` (KA-1, KA-3), `FaultCatalogueTest` (pause scope) | COMPLETE (partition scope refined: DEV-03) |
+| D-23 | OMISSION edge | runtime `FaultInjector.omissionSources`, `Engine.doTimer` | `AcceptanceTest.ad1`, `KnownAnswerTest` (KA-1, KA-3), `FaultCatalogueTest` (pause scope) | COMPLETE (partition scope refined, literal scope available and compared: DEV-03, `OmissionScopeStudyTest`) |
 | D-24 | Env events keyed by what they concern | runtime `Engine` (`drop:`, `fault:`, `iv:`, `inv:`, `dup:`) | `LawsTest.m13`, `EngineTest.everyCopy...` | COMPLETE (+ copy suffixes: DEV-12) |
 | D-25 | INTERVENTION_APPLIED on env; origin in digest | runtime `Engine.applyInterventions`; model `Event.contentDigest` | `AcceptanceTest.ad4`, `LawsTest.m7, m10`, `CanonTest.eventLineRoundTrip...` | COMPLETE |
 | D-26 | Node API in its own module | `chronos-sdk` | `BuildRulesTest` | COMPLETE |
@@ -64,6 +64,7 @@ Paths are relative to the module's `src/main/java/chronos/<package>/`.
 | 16 | Segmented log, format version, torn final record | store; `TimelineStoreTest`, `PersistenceTest` (kills a real process) | COMPLETE |
 | 17 | Catalogue: metadata, parent, branch point | `TimelineStore`; `TimelineStoreTest` | COMPLETE |
 | 18 | Indexes by position, node, kind, virtual time | `TimelineIndex`, `TimelineStore.index/rebuildIndex`, CLI `reindex`, bench B6b | COMPLETE (DEV-16): persisted in `index/main.idx`, validated on load, rebuilt from the log if missing or suspect; `TimelineStoreTest` (round trip incl. branches and 2,100 events, damage cases, NFR-04), `CliTest.reindex...`, `LawsTest.m11`; no byte-offset table, and loading them is not faster than rebuilding (measured) |
+| 18b | Log compression (cut line 6) | `TimelineStore.compressNewTimelines`, `TimelineWriter` (gzip), CLI `--compress`, B12/B6b | COMPLETE as opt-in segment compression (DEV-34); `TimelineStoreTest.compressed...`, `CliTest.compressedRecordings...`; per-vector delta compression NOT DONE (its spec trigger did not occur) |
 | 19 | Canonical state, digest every step | `Engine.finishTrigger`; `LawsTest.m2` | COMPLETE |
 | 20 | Reconstruct state, in-flight, timers from the log only | `TimeTravelSession`; `LawsTest.m2`, `AcceptanceTest.ad3` | COMPLETE |
 | 21 | Checkpoints at interval and branch points; restorable | `Engine.captureImage/restore`; `LawsTest.m5` | COMPLETE |
@@ -95,7 +96,7 @@ Paths are relative to the module's `src/main/java/chronos/<package>/`.
 | 49 | Demos: ping-pong, causal-ordering, RE, two more known-answer | demo module | COMPLETE (KA-2, KA-3, KA-4 + control + bad citizen) |
 | 50 | Live local web viewer (Stretch) | `Viewer` + `viewer.html` (cli), `chronos serve` | COMPLETE as a read-only viewer (DEV-33); `ViewerTest` (endpoints, bad requests, 405 on writes, store unchanged); the page was opened and driven in a browser |
 | 51 | INTERVENTION_APPLIED on env, id `iv:<id>`, origin in digest | `Engine.applyInterventions` | COMPLETE |
-| 52 | OMISSION edges: partition scope (12a), crash and pause scopes (12b) | `FaultInjector`; `FaultCatalogueTest`, `KnownAnswerTest` | COMPLETE (partition scope refined: DEV-03) |
+| 52 | OMISSION edges: partition scope (12a), crash and pause scopes (12b) | `FaultInjector`; `FaultCatalogueTest`, `KnownAnswerTest` | COMPLETE (partition scope refined, literal scope available and compared: DEV-03, `OmissionScopeStudyTest`) |
 
 ## Non-functional requirements NFR-01 to NFR-20
 
@@ -119,6 +120,7 @@ Paths are relative to the module's `src/main/java/chronos/<package>/`.
 | 16 | Output speaks CHRONOS vocabulary and cites event ids | all reports | COMPLETE |
 | 17 | Every component has a teaching note and a runnable demo | Javadoc teaching notes on every public type; `docs/VIVA_GUIDE.md` (concept to code to command) | SIMPLIFIED (notes are in Javadoc and the guide, not one per component) |
 | 18 | Format version on stored files; old logs refused clearly | `TimelineStoreTest.aLogWithAnUnknownFormatVersionIsRefused` | COMPLETE |
+| 18b | Log compression (cut line 6) | `TimelineStore.compressNewTimelines`, `TimelineWriter` (gzip), CLI `--compress`, B12/B6b | COMPLETE as opt-in segment compression (DEV-34); `TimelineStoreTest.compressed...`, `CliTest.compressedRecordings...`; per-vector delta compression NOT DONE (its spec trigger did not occur) |
 | 19 | < 5 runtime libraries, each justified | `BuildRulesTest` (Jackson is the only runtime library; JMH is build-time in the bench module) | COMPLETE |
 | 20 | Build-time scan for wall-clock, unseeded randomness, raw threads | `BuildRulesTest` (with a negative control that detects the bad citizen) | COMPLETE |
 

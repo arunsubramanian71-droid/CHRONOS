@@ -194,6 +194,21 @@ class CliTest {
     }
 
     @Test
+    void compressedRecordingsAreTheSameTimelineInASmallerFile() throws Exception {
+        R plain = cli("run", "gossip", "--param", "nodes=5", "--param", "horizon=3000");
+        R zipped = cli("run", "gossip", "--param", "nodes=5", "--param", "horizon=3000", "--compress");
+        assertEquals(0, plain.code());
+        assertEquals(0, zipped.code());
+        assertTrue(Files.exists(tmp.resolve("data/timelines/T1/events/000000.log.gz")) && Files.exists(tmp.resolve("data/timelines/T0/events/000000.log")));
+        assertTrue(Files.size(tmp.resolve("data/timelines/T1/events/000000.log.gz")) * 3 < Files.size(tmp.resolve("data/timelines/T0/events/000000.log")));
+        assertEquals(0, cli("verify", "T1").code(), "a compressed timeline replays and verifies");
+        assertEquals(cli("show", "T0").out().replace("T0", "T"), cli("show", "T1").out().replace("T1", "T"));
+        R br = cli("branch", "T1", "--drop", "g0#5", "--compress");
+        assertEquals(0, br.code(), br.err() + br.out());
+        assertEquals(0, cli("verify", "T1.1").code());
+    }
+
+    @Test
     void searchRanksTheSingleChangesThatMakeTheFailureDisappear() {
         cli("run", "re");
         R r = cli("search", "T0", "--max", "40", "--threads", "2");

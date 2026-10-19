@@ -84,7 +84,7 @@ final class Cli {
         Args args = Args.parse(a);
         dataDir = Path.of(dataOpt != null ? dataOpt : System.getenv().getOrDefault("CHRONOS_DATA", "chronos-data"));
         if (cmd.equals("scenarios")) return scenarios();
-        store = new TimelineStore(dataDir);
+        store = new TimelineStore(dataDir).compressNewTimelines(args.has("compress"));
         manager = new TimelineManager(store, registry);
         return switch (cmd) {
             case "run" -> run(args);

@@ -4,6 +4,7 @@ import chronos.model.*;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
@@ -39,6 +40,7 @@ public final class TimelineStore implements LogReader {
     private record Own(List<Event> events, List<Long> groupEnds, int discardedLines) {}
 
     private final Path root;
+    private volatile boolean compressNew;
     private final Map<String, Own> ownCache = new ConcurrentHashMap<>();
     private final Map<String, List<Event>> resolvedCache = new ConcurrentHashMap<>();
 
@@ -49,6 +51,12 @@ public final class TimelineStore implements LogReader {
         } catch (IOException e) {
             throw new UncheckedIOException("cannot create " + root, e);
         }
+    }
+
+    /** When on, timelines written from now on store their event segments gzip-compressed (opt-in log compression); reading handles both forms. */
+    public TimelineStore compressNewTimelines(boolean on) {
+        this.compressNew = on;
+        return this;
     }
 
     public Path root() {
@@ -73,7 +81,7 @@ public final class TimelineStore implements LogReader {
         if (Files.exists(dir)) throw new IllegalStateException("timeline " + header.timelineId() + " already exists");
         if (header.parentId() != null && !Files.isDirectory(dirOf(header.parentId()))) throw new UnknownTimelineException(header.parentId());
         try {
-            TimelineWriter w = new TimelineWriter(this, header, dir, segmentSize, simulatedGroupDelayMicros);
+            TimelineWriter w = new TimelineWriter(this, header, dir, segmentSize, simulatedGroupDelayMicros, compressNew);
             updateCatalog(header, TimelineStatus.RECORDING);
             return w;
         } catch (IOException e) {
@@ -406,7 +414,7 @@ public final class TimelineStore implements LogReader {
         List<Path> files = new ArrayList<>();
         if (Files.isDirectory(evDir)) {
             try (Stream<Path> s = Files.list(evDir)) {
-                s.filter(p -> p.getFileName().toString().endsWith(".log")).sorted().forEach(files::add);
+                s.filter(p -> p.getFileName().toString().endsWith(".log") || p.getFileName().toString().endsWith(".log.gz")).sorted().forEach(files::add);
             } catch (IOException e) {
                 throw new UncheckedIOException(e);
             }
@@ -421,7 +429,9 @@ public final class TimelineStore implements LogReader {
         for (int fi = 0; fi < files.size(); fi++) {
             Path f = files.get(fi);
             boolean lastFile = fi == files.size() - 1;
-            try (BufferedReader r = Files.newBufferedReader(f, StandardCharsets.UTF_8)) {
+            boolean gz = f.getFileName().toString().endsWith(".gz");
+            try (BufferedReader r = gz ? new BufferedReader(new InputStreamReader(new java.util.zip.GZIPInputStream(Files.newInputStream(f)), StandardCharsets.UTF_8))
+                    : Files.newBufferedReader(f, StandardCharsets.UTF_8)) {
                 String line;
                 int ln = 0;
                 while ((line = r.readLine()) != null) {
@@ -469,7 +479,12 @@ public final class TimelineStore implements LogReader {
                     }
                 }
             } catch (IOException ex) {
-                throw new UncheckedIOException(ex);
+                // a compressed segment cut short by a crash ends with an unexpected end of the stream: that is a torn tail, like a cut line
+                if (gz && lastFile && (ex instanceof java.io.EOFException || ex instanceof java.util.zip.ZipException)) {
+                    if (suspect == null && !pending.isEmpty()) suspect = f.getFileName() + ":end";
+                } else {
+                    throw new UncheckedIOException(ex);
+                }
             }
             if (!lastFile && (!pending.isEmpty() || suspect != null))
                 throw new CorruptLogException("segment " + f.getFileName() + " of " + id + " ends inside a step group");

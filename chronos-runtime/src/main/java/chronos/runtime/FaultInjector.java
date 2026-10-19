@@ -226,11 +226,19 @@ final class FaultInjector {
         return out;
     }
 
-    private static boolean touches(NodeSlot slot, ActiveFault f) {
+    /** DEV-03: when true, a partition touches every node that sits on a side of it, as the specification's Phase 12a sentence reads literally. */
+    private boolean literalPartitionScope;
+
+    void literalPartitionScope(boolean on) {
+        this.literalPartitionScope = on;
+    }
+
+    private boolean touches(NodeSlot slot, ActiveFault f) {
         if (f.kind.equals("crash") || f.kind.equals("pause")) return !slot.name.equals(f.node) && slot.heardFrom.contains(f.node);
         if (!f.kind.equals("partition")) return false;
         int g = f.groupOf(slot.name);
         if (g < 0) return false;
+        if (literalPartitionScope) return f.cutsOffFromAnother(slot.name);
         for (String heard : slot.heardFrom) {
             int hg = f.groupOf(heard);
             if (hg >= 0 && hg != g) return true;

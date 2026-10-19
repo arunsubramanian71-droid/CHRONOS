@@ -15,7 +15,7 @@ import java.util.concurrent.CompletableFuture;
  * appends them to the segmented JSON-lines log. A single writer means no locks on the file; the bounded queue gives
  * back-pressure to the engine. Only immutable events cross the thread boundary.
  *
- * File format (format version 1): events/NNNNNN.log holds one JSON event per line; every step group is closed by a commit
+ * File format (format version 1): events/NNNNNN.log (or NNNNNN.log.gz when compression is on: the same lines, gzip-compressed with a sync flush per step group) holds one JSON event per line; every step group is closed by a commit
  * line {"commit":lastSeq,"h":sha256-of-the-group's-lines,"n":count}. Lines after the last commit line belong to an
  * unfinished step and are discarded on load (NFR-11).
  */
@@ -35,12 +35,14 @@ public final class TimelineWriter implements EventSink {
     private final long simulatedGroupDelayNanos;   // benchmark hook (B13): pretend the disk is slow
     private volatile int queueHighWater;
 
+    private final boolean compress;
     private final TimelineIndex.Builder indexBuilder = new TimelineIndex.Builder();
     private int segmentIndex = -1;
     private int eventsInSegment;
     private OutputStream out;
 
-    TimelineWriter(TimelineStore store, TimelineHeader header, Path dir, int segmentSize, long simulatedGroupDelayMicros) throws IOException {
+    TimelineWriter(TimelineStore store, TimelineHeader header, Path dir, int segmentSize, long simulatedGroupDelayMicros, boolean compress) throws IOException {
+        this.compress = compress;
         this.simulatedGroupDelayNanos = simulatedGroupDelayMicros * 1000;
         this.store = store;
         this.timelineId = header.timelineId();
@@ -165,8 +167,10 @@ public final class TimelineWriter implements EventSink {
         if (out != null) out.close();
         segmentIndex++;
         eventsInSegment = 0;
-        out = new BufferedOutputStream(Files.newOutputStream(dir.resolve("events").resolve(String.format("%06d.log", segmentIndex)),
-                StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE), 1 << 16);
+        OutputStream file = Files.newOutputStream(dir.resolve("events").resolve(String.format(compress ? "%06d.log.gz" : "%06d.log", segmentIndex)),
+                StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+        // compressed segments are flushed with a sync marker after every step group, so a crash loses at most the unfinished group
+        out = compress ? new java.util.zip.GZIPOutputStream(new BufferedOutputStream(file, 1 << 16), 1 << 16, true) : new BufferedOutputStream(file, 1 << 16);
     }
 
     private void flush() throws IOException {

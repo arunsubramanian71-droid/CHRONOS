@@ -399,6 +399,44 @@ public final class BenchMain {
                 return (System.nanoTime() - t) / 1e6;
             });
             row("B6b", "What does opening a persisted timeline cost?", n + " events", "rebuild indexes from the log", rebuild, "ms", "the fallback when an index file is missing or suspect");
+            // opt-in log compression (cut line 6): size and cost against the plain log of the same run
+            Path dz = tempDir("chronos-b6c-");
+            try {
+                TimelineStore zs = new TimelineStore(dz).compressNewTimelines(true);
+                Stats recPlain = Stats.measure(reps, () -> {
+                    Path dd;
+                    try { dd = tempDir("chronos-b6d-"); } catch (IOException e) { throw new UncheckedIOException(e); }
+                    try {
+                        long t = System.nanoTime();
+                        Recording.record(new TimelineStore(dd), REG, "T0", Recording.Spec.of("gossip", 1).withParams(Map.of("nodes", "5", "horizon", Long.toString(h))).withCheckpointInterval(1000));
+                        return (System.nanoTime() - t) / 1e6;
+                    } finally { deleteTree(dd); }
+                });
+                Stats recZip = Stats.measure(reps, () -> {
+                    Path dd;
+                    try { dd = tempDir("chronos-b6e-"); } catch (IOException e) { throw new UncheckedIOException(e); }
+                    try {
+                        long t = System.nanoTime();
+                        Recording.record(new TimelineStore(dd).compressNewTimelines(true), REG, "T0", Recording.Spec.of("gossip", 1).withParams(Map.of("nodes", "5", "horizon", Long.toString(h))).withCheckpointInterval(1000));
+                        return (System.nanoTime() - t) / 1e6;
+                    } finally { deleteTree(dd); }
+                });
+                Recording.record(zs, REG, "T0", Recording.Spec.of("gossip", 1).withParams(Map.of("nodes", "5", "horizon", Long.toString(h))).withCheckpointInterval(1000));
+                long zipBytes = dirBytes(dz.resolve("timelines/T0/events"));
+                row("B12", "How much disk does a timeline use?", "gzip-compressed segments (opt-in --compress)", "bytes/event", String.valueOf(zipBytes / n), "", "", "bytes",
+                        "x" + fmt((double) logBytes / zipBytes) + " smaller than the plain log; recording takes x" + fmt(recZip.median / recPlain.median) + " of the plain time (" + fmt(recPlain.median) + " ms plain, " + fmt(recZip.median) + " ms compressed)");
+                TimelineStore zfresh = new TimelineStore(dz);
+                Stats zparse = Stats.measure(reps, () -> {
+                    TimelineStore f = new TimelineStore(dz);
+                    long t = System.nanoTime();
+                    f.events("T0");
+                    return (System.nanoTime() - t) / 1e6;
+                });
+                row("B6b", "What does opening a persisted timeline cost?", n + " events", "parse the compressed log from disk", zparse, "ms", "x" + fmt(zparse.median / parse.median) + " of the plain parse time");
+                if (!zfresh.events("T0").equals(events)) throw new IllegalStateException("compressed timeline differs from the plain one");
+            } finally {
+                deleteTree(dz);
+            }
         } finally {
             deleteTree(d);
         }

@@ -387,4 +387,63 @@ class TimelineStoreTest {
         long idx = Files.size(tmp.resolve("timelines/T0/index/main.idx"));
         assertTrue(idx * 5 < log, "index " + idx + " bytes vs log " + log + " bytes");
     }
+
+    // ------------------------------------------------------------------------------------------ opt-in log compression
+    @Test
+    void compressedSegmentsRoundTripAndAreSmaller() throws IOException {
+        TimelineStore plain = new TimelineStore(tmp.resolve("plain"));
+        TimelineStore zipped = new TimelineStore(tmp.resolve("zipped")).compressNewTimelines(true);
+        int[] groups = new int[300];
+        Arrays.fill(groups, 3);
+        writeMixed(plain, header("T0", null, -1), 0, 200, groups);
+        writeMixed(zipped, header("T0", null, -1), 0, 200, groups);
+        writeMixed(zipped, header("T0.1", "T0", 899), 900, 200, 3, 3, 3);
+        try (Stream<Path> s = Files.list(tmp.resolve("zipped/timelines/T0/events"))) {
+            assertTrue(s.allMatch(p -> p.getFileName().toString().endsWith(".log.gz")));
+        }
+        TimelineStore fresh = new TimelineStore(tmp.resolve("zipped"));
+        assertEquals(new TimelineStore(tmp.resolve("plain")).events("T0"), fresh.events("T0"), "the same events whether or not the segments are compressed");
+        assertEquals(new TimelineStore(tmp.resolve("plain")).groupEnds("T0"), fresh.groupEnds("T0"));
+        assertEquals("persisted", fresh.index("T0").source());
+        assertEquals(909, fresh.events("T0.1").size());
+        long plainBytes = 0, zipBytes = 0;
+        try (Stream<Path> s = Files.list(tmp.resolve("plain/timelines/T0/events"))) { for (Path p : (Iterable<Path>) s::iterator) plainBytes += Files.size(p); }
+        try (Stream<Path> s = Files.list(tmp.resolve("zipped/timelines/T0/events"))) { for (Path p : (Iterable<Path>) s::iterator) zipBytes += Files.size(p); }
+        assertTrue(zipBytes * 2 < plainBytes, "compressed " + zipBytes + " vs plain " + plainBytes);
+        // uncompressed and compressed timelines can live in one store and one lineage
+        assertEquals(fresh.events("T0").subList(0, 900), fresh.events("T0.1").subList(0, 900));
+    }
+
+    @Test
+    void aCompressedSegmentCutAtAnyByteIsATornTailNotCorruption_NFR11() throws IOException {
+        TimelineStore zipped = new TimelineStore(tmp.resolve("z")).compressNewTimelines(true);
+        writeMixed(zipped, header("T0", null, -1), 0, 1000, 2, 3, 2, 4, 3);
+        Path seg = tmp.resolve("z/timelines/T0/events/000000.log.gz");
+        byte[] all = Files.readAllBytes(seg);
+        List<Long> ends = new TimelineStore(tmp.resolve("z")).groupEnds("T0");
+        int previous = 0;
+        for (int cut = 0; cut < all.length; cut++) {
+            Path copy = tmp.resolve("cut" + cut);
+            Files.createDirectories(copy.resolve("timelines"));
+            copyTree(tmp.resolve("z/timelines/T0"), copy.resolve("timelines/T0"));
+            Files.write(copy.resolve("timelines/T0/events/000000.log.gz"), Arrays.copyOf(all, cut));
+            TimelineStore s = new TimelineStore(copy);
+            int n = s.events("T0").size(); // never throws: a truncated tail is discarded
+            assertTrue(ends.contains((long) n - 1) || n == 0, "cut at " + cut + " left " + n + " events, which is not a whole number of step groups");
+            assertTrue(n >= previous, "more bytes never mean fewer events");
+            previous = n;
+        }
+        // only the gzip trailer is missing in the longest cut, and every step group was already complete and flushed: nothing is lost
+        assertEquals(14, previous);
+    }
+
+    private static void copyTree(Path from, Path to) throws IOException {
+        try (Stream<Path> s = Files.walk(from)) {
+            for (Path p : (Iterable<Path>) s::iterator) {
+                Path t = to.resolve(from.relativize(p).toString());
+                if (Files.isDirectory(p)) Files.createDirectories(t);
+                else Files.copy(p, t, StandardCopyOption.REPLACE_EXISTING);
+            }
+        }
+    }
 }

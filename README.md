@@ -11,7 +11,7 @@ It is implemented from the architecture contract `CHRONOS System Specification v
 Terms such as *Node API*, *event*, *step*, *timeline*, *intervention*, *OMISSION edge* and *first causal divergence* are used
 exactly as the specification defines them.
 
-> **Status in one paragraph.** All eight modules exist and build (verified on macOS and on Linux); 155 automated tests pass; the flagship
+> **Status in one paragraph.** All eight modules exist and build (verified on macOS and on Linux); 160 automated tests pass; the flagship
 > demonstration (acceptance demonstrations AD-1 to AD-6 and known-answer scenarios KA-0, KA-2, KA-3, KA-4 on the replicated store "RE")
 > runs from one command with 24 self-checks; the whole fault catalogue and the whole intervention catalogue of the specification are
 > implemented and tested. What is **not** done (for example the blind
@@ -68,7 +68,7 @@ java -version && mvn -version      # both must report Java 21
 ## Build and test
 
 ```bash
-mvn -ntp package          # compiles all eight modules, runs all 155 tests, builds the two jars
+mvn -ntp package          # compiles all eight modules, runs all 160 tests, builds the two jars
 ```
 
 Produces `chronos-cli/target/chronos.jar` (the CLI) and `chronos-bench/target/chronos-bench.jar` (benchmarks). Dependencies are
@@ -119,6 +119,7 @@ Below, `chronos` stands for `java -jar chronos-cli/target/chronos.jar`.
 | Which combination of fault rules is critical? (KA-4) | `chronos causes T0` |
 | What had node b heard about p at this event? The smallest consistent cut containing events? | `chronos inspect T0 --knows b#12` · `chronos inspect T0 --cut b#12,client#3` (also `knows`/`cut` in `session`) |
 | Browse timelines in a browser: slider, diagram, world, why, compare (read-only live viewer) | `chronos serve --port 8080`, then open http://127.0.0.1:8080/ |
+| Store a recording gzip-compressed (opt-in, about 4.5x smaller; any command that records accepts it) | `chronos run re --compress` |
 | Check or rebuild the derived index files (`index/main.idx`) | `chronos reindex [T0] [--check]` |
 | Re-run one node alone from its recorded inputs and check its outputs (R5) | `chronos local-replay T0 [b]` |
 | Which single change to the causal past makes the failure disappear? (intervention search) | `chronos search T0 [--max 64] [--keep]` |
@@ -126,7 +127,7 @@ Below, `chronos` stands for `java -jar chronos-cli/target/chronos.jar`.
 | Static HTML report, optionally with a branch for comparison | `chronos report T0 --against T0.1 [--out FILE]` |
 | The timeline tree / delete a leaf | `chronos ls` · `chronos delete T0.1` |
 
-Scenario parameters: `--param partition=off` (re, re2), `delay=off` (ka2), `crash=off` (ka3), `nodes=N`, `horizon=MS` (gossip).
+Scenario parameters: `--param omission=literal` (any scenario: the specification's literal OMISSION scope for partitions, DEV-03), `--param partition=off` (re, re2), `delay=off` (ka2), `crash=off` (ka3), `nodes=N`, `horizon=MS` (gossip).
 Scenarios: `pingpong`, `causal`, `re`, `re2` (two backups, KA-4), `ka2`, `ka3`, `control` (KA-0), `gossip`, `bad` (deliberately
 nondeterministic node for AD-2). `chronos scenarios` lists them.
 
@@ -153,8 +154,8 @@ Measured results (and which targets of Section 8 were met or missed) are in [`do
 ## Limitations (summary; details in the documents above)
 
 * Simulation only (D-03): no real network, no real processes; applications are written against the Node API.
-* Not implemented: log compression, and a **blind** debugging evaluation with a second person
+* Not implemented: the Pinned continuation policy (deferred by decision D-15), per-vector delta compression (its trigger in the specification did not occur, DEV-34), and a **blind** debugging evaluation with a second person
   (`docs/EVALUATION.md` evaluates the analysers on 800 unplanned chaos runs instead, and says what that does not show).
 * Verified on macOS (Apple Silicon, JDK 21) and on Linux (Ubuntu 24.04 in a container); **Windows is not verified**.
 * A counterfactual is evidence about the simulated world under CHRONOS's rules, not proof about reality (Section 19).
-* Interpretations and extensions of the specification are recorded as DEV-01 to DEV-33 in `docs/DEVIATIONS.md`.
+* Interpretations and extensions of the specification are recorded as DEV-01 to DEV-34 in `docs/DEVIATIONS.md`.

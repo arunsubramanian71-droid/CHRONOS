@@ -1,6 +1,7 @@
 package chronos.demo;
 
 import chronos.demo.bad.BadCitizen;
+import chronos.sdk.ConfiguredScenario;
 import chronos.sdk.Scenario;
 import chronos.sdk.ScenarioRegistry;
 
@@ -12,6 +13,7 @@ import java.util.Map;
  *   re, re2   partition=on|off (default on: the failing flagship run)
  *   ka2       delay=on|off     ka3  crash=on|off
  *   gossip    nodes=N, horizon=MS
+ *   any       omission=literal  use the specification's literal OMISSION scope for partitions (DEV-03); default is the refined scope
  */
 public final class DemoRegistry implements ScenarioRegistry {
     @Override
@@ -21,6 +23,11 @@ public final class DemoRegistry implements ScenarioRegistry {
 
     @Override
     public Scenario create(String name, Map<String, String> p) {
+        Scenario base = build(name, p);
+        return "literal".equals(p.get("omission")) ? new ConfiguredScenario(base, Map.of("chronos.omission", "literal")) : base;
+    }
+
+    private Scenario build(String name, Map<String, String> p) {
         return switch (name) {
             case "pingpong" -> new PingPong();
             case "causal" -> new CausalDemo();

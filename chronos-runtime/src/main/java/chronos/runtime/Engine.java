@@ -62,6 +62,7 @@ public final class Engine {
         this.opts = opts;
         this.decisions = decisions;
         this.recorder = recorder;
+        faults.literalPartitionScope("literal".equals(scenario.config().get("chronos.omission"))); // DEV-03 study switch
         List<NodeSpec> specs = scenario.nodes();
         if (specs.isEmpty()) throw new IllegalArgumentException("a scenario needs at least one node");
         for (NodeSpec spec : specs) {
