@@ -68,6 +68,7 @@ public final class BenchMain {
             graphAndSeek(quick ? new int[]{10_000} : new int[]{10_000, 100_000});
             replaySpeed(quick ? new int[]{10_000} : new int[]{10_000, 100_000});
             persistedOpen(quick ? 20_000 : 100_000);
+            explorerAndBundles(quick ? 20_000 : 100_000);
             branching(quick ? 20_000 : 100_000);
             counterfactualThreads();
             interventionSearch();
@@ -374,6 +375,57 @@ public final class BenchMain {
         });
         double limit = size <= 100_000 ? 1000 : 5000;
         row("B6", "How fast can we seek?", events.size() + " events", "worst of 100 jumps + world", seek, "ms", (seek.p99 < limit ? "meets" : "MISSES") + " NFR-06 (<" + (long) limit + " ms); opening the session (graph + indexes): " + fmt(open) + " ms");
+    }
+
+    // ------------------------------------------------------------------------------------------------------------
+    // B15, B16: systematic exploration throughput and incident bundles
+    // ------------------------------------------------------------------------------------------------------------
+
+    private static void explorerAndBundles(int size) throws IOException {
+        SystematicExplorer ex = new SystematicExplorer(REG);
+        List<SystematicExplorer.Candidate> cands = ex.generate("re", Map.of("partition", "off"), 42, null, SystematicExplorer.Grid.standard(List.of(30L, 100L, 300L)));
+        SystematicExplorer.Config cfg = new SystematicExplorer.Config("re", Map.of("partition", "off"), 42, null, FaultPlan.empty(), cands, 2, 1_000_000, false, true);
+        long[] executed = {0};
+        Stats s = Stats.measure(reps, () -> {
+            long t = System.nanoTime();
+            SystematicExplorer.Report r = ex.explore(cfg);
+            executed[0] = r.executed();
+            return (System.nanoTime() - t) / 1e6;
+        });
+        row("B15", "How fast is systematic exploration of fault schedules?", "RE, " + cands.size() + " candidates, <= 2 faults", "full exploration", s, "ms",
+                executed[0] + " schedules executed: " + fmt(executed[0] / (s.median / 1000)) + " schedules/s, each a complete deterministic run with invariant checks");
+        Path d = tempDir("chronos-b16-");
+        try {
+            TimelineStore store = new TimelineStore(d.resolve("a"));
+            long h = horizonFor(5, size);
+            Recording.record(store, REG, "T0", Recording.Spec.of("gossip", 1).withParams(Map.of("nodes", "5", "horizon", Long.toString(h))).withCheckpointInterval(1000));
+            int n = store.events("T0").size();
+            Path bundle = d.resolve("t0.chronos-incident");
+            Stats exp = Stats.measure(reps, () -> {
+                try { Files.deleteIfExists(bundle); } catch (IOException e) { throw new UncheckedIOException(e); }
+                long t = System.nanoTime();
+                IncidentBundle.export(store, "T0", bundle);
+                return (System.nanoTime() - t) / 1e6;
+            });
+            row("B16", "What do portable incident bundles cost?", n + " events", "export", exp, "ms", Files.size(bundle) / 1024 + " KiB (" + fmt((double) Files.size(bundle) / n) + " bytes/event compressed)");
+            int[] k = {0};
+            Stats imp = Stats.measure(reps, () -> {
+                TimelineStore target = new TimelineStore(d.resolve("t" + (k[0]++)));
+                long t = System.nanoTime();
+                IncidentBundle.importInto(target, bundle, REG);
+                return (System.nanoTime() - t) / 1e6;
+            });
+            row("B16", "What do portable incident bundles cost?", n + " events", "validated import", imp, "ms", "every file checksum, the log's commit checksums, count, log hash and causal evidence recomputed");
+            Stats rep = Stats.measure(Math.min(reps, 3), () -> {
+                long t = System.nanoTime();
+                IncidentBundle.Reproduction r = IncidentBundle.reproduce(bundle, REG);
+                if (!r.ok()) throw new IllegalStateException(r.problems().toString());
+                return (System.nanoTime() - t) / 1e6;
+            });
+            row("B16", "What do portable incident bundles cost?", n + " events", "reproduce (import, replay verify, fresh run)", rep, "ms", "");
+        } finally {
+            deleteTree(d);
+        }
     }
 
     // ------------------------------------------------------------------------------------------------------------

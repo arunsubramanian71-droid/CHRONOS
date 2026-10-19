@@ -8,7 +8,7 @@ HTML report, benchmarks and documentation. **Full v0.2 compliance is NOT claimed
 ## Recovery checkpoint (updated at each milestone)
 
 * Branch `main`, no remote. Everything below was run on the final code (JDK 21.0.12.1, Maven 3.10.0, Apple M2 Max).
-* `mvn -ntp clean package`: BUILD SUCCESS, **204 tests, 0 failures**. Same source in a Linux container (Ubuntu, Temurin 21.0.12.1, aarch64): 186 tests, 0 failures; packaged demo 24 of 24.
+* `mvn -ntp clean package`: BUILD SUCCESS, **205 tests, 0 failures**. Same source in a Linux container (Ubuntu, Temurin 21.0.12.1, aarch64): 186 tests, 0 failures; packaged demo 24 of 24.
 * `InterventionFuzzTest` with `CHRONOS_FUZZ_SEEDS=20000` (random interventions at random boundaries of random chaos runs, nested branches, every branch replay-verified): passed (788 s). `SoakTest` chaos on every demo scenario with `CHRONOS_SOAK_SEEDS=3000` (3,000 runs per scenario, graph self-check and replay verification on each): passed. Earlier long runs found and fixed DEV-39 to DEV-41; each fix has a regression test shown to fail without it.
 * `chronos-bench.jar all`: all NFR rows met (`docs/BENCHMARKS.md`, regenerated from `docs/benchmark-results.csv`); 10,000-seed KA-0 soak: 0 violations.
 * No background process is running. Open items: see "Not implemented" and "Open specification questions" below; the next step, if work continues, is a Windows run (`docs/PORTABILITY.md`) and a real blind session (`docs/BLIND_PROTOCOL.md`), both of which need something this environment does not have.
@@ -20,7 +20,7 @@ HTML report, benchmarks and documentation. **Full v0.2 compliance is NOT claimed
 |---|---|---|
 | Maven runs on JDK 21 | `mvn -version` after `JAVA_HOME=$(/usr/libexec/java_home -v 21)`; the build also has an enforcer rule `[21,22)` | `Java version: 21.0.12.1` |
 | Compilation + all tests + packaging, from scratch (macOS) | `mvn -ntp clean package` | **BUILD SUCCESS**, ~14 s, 8 modules |
-| Unit, integration and acceptance tests | same command | **204 tests, 0 failures, 0 errors, 0 skipped** |
+| Unit, integration and acceptance tests | same command | **205 tests, 0 failures, 0 errors, 0 skipped** |
 | **Linux** build and tests | `docker run maven:3.9-eclipse-temurin-21 ... mvn -ntp package` on a copy of the source (Ubuntu 24.04 aarch64, Temurin 21, Maven 3.9.16) | **BUILD SUCCESS, 186 tests, 0 failures** (re-run on the final source); the golden files generated on macOS pass on Linux (NFR-14, R16); the packaged jar's demo gives 24 of 24 checks on Linux too |
 | Packaging | same command | `chronos-cli/target/chronos.jar` (2.6 MB), `chronos-bench/target/chronos-bench.jar` (5.6 MB), both self-contained |
 | Flagship demonstration from the packaged jar | `java -jar chronos-cli/target/chronos.jar --data chronos-data demo` | **24 of 24 checks passed**, exit 0 (`docs/demo-output.txt`) |
@@ -32,7 +32,7 @@ HTML report, benchmarks and documentation. **Full v0.2 compliance is NOT claimed
 | Benchmarks, soak, slow disk | `chronos-bench.jar all` (JDK 21, re-run on the final code, now including B11), `... jmh` | `docs/BENCHMARKS.md`; **10,000-seed chaos soak: 0 violations**; NFR-05 to NFR-09 all met |
 | Evaluation on unplanned failures | `chronos-bench.jar eval --seeds 400` | 800 chaos runs, 100 failures, root fault named in 94, but-for confirmed by counterfactual in 73 (`docs/EVALUATION.md`) |
 
-### Test inventory (204)
+### Test inventory (205)
 
 | Module | Tests | Classes |
 |---|---|---|
@@ -40,7 +40,7 @@ HTML report, benchmarks and documentation. **Full v0.2 compliance is NOT claimed
 | chronos-store | 21 | `TimelineStoreTest` |
 | chronos-runtime | 16 | `EngineTest` |
 | chronos-analysis | 18 | `CausalGraphTest` 7, `ComparatorTest` 11 |
-| chronos-cli | 126 | `AcceptanceTest` 5, `LawsTest` 20 (M1-M14), `KnownAnswerTest` 9, `PersistenceTest` 4, `CliTest` 20, `PinnedPolicyTest` 3, `AnalyserMutationTest` 3, `M10CatalogueTest` 4, `LawSweepTest` 3, `DemoScriptsTest` 1, `BlindKitTest` 2, `TraceabilityTest` 2, `InterventionFuzzTest` 1, `CorruptionFuzzTest` 3, `OmissionScopeStudyTest` 2, `NodeLocalReplayTest` 5, `ViewerTest` 3, `SystematicExplorerTest` 7, `IncidentBundleTest` 5, `ParserRobustnessTest` 2, `SoakTest` 4, `GoldenFileTest` 2, `FaultCatalogueTest` 16 |
+| chronos-cli | 127 | `AcceptanceTest` 5, `LawsTest` 20 (M1-M14), `KnownAnswerTest` 9, `PersistenceTest` 4, `CliTest` 20, `PinnedPolicyTest` 3, `AnalyserMutationTest` 3, `M10CatalogueTest` 4, `LawSweepTest` 3, `DemoScriptsTest` 1, `BlindKitTest` 2, `TraceabilityTest` 2, `InterventionFuzzTest` 1, `CorruptionFuzzTest` 3, `OmissionScopeStudyTest` 2, `NodeLocalReplayTest` 5, `ViewerTest` 3, `SystematicExplorerTest` 7, `IncidentBundleTest` 5, `ParserRobustnessTest` 2, `CliRobustnessTest` 1, `SoakTest` 4, `GoldenFileTest` 2, `FaultCatalogueTest` 16 |
 | chronos-bench | 8 | `BuildRulesTest` (dependency direction, banned APIs, approved libraries, soak harness) |
 
 ## What is implemented (modules)
