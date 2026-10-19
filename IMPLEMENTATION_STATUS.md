@@ -5,6 +5,13 @@
 **Overall:** a working, tested, demonstrable implementation of the Milestone S core plus most of the depth items, the CLI, the static
 HTML report, benchmarks and documentation. **Full v0.2 compliance is NOT claimed**; see "Not implemented" and `docs/DEVIATIONS.md`.
 
+## Recovery checkpoint (updated at each milestone)
+
+* Branch `main`, no remote. Last verified build: `mvn -ntp clean package` BUILD SUCCESS, 186 tests, 0 failures (run on the code at the last commit below).
+* Background process in flight when this was written: a 20,000-seed run of `InterventionFuzzTest` (`CHRONOS_FUZZ_SEEDS=20000`, log in the session scratchpad). Its result is NOT yet recorded; the earlier runs found DEV-39 to DEV-41 and were re-run after each fix.
+* Next tasks, in order: (1) record the fuzz result and fix anything it finds (each fix gets a regression test shown to fail without it); (2) a long `SoakTest` (`CHRONOS_SOAK_SEEDS=3000`); (3) final cycle: clean package, packaged demo, benchmark `all` run, 10,000-seed soak, Linux container build, regenerate `docs/BENCHMARKS.md`, demo transcript and sample report; (4) final report.
+* To resume safely: `git status && git log --oneline | head`, then `export JAVA_HOME=$(/usr/libexec/java_home -v 21) && mvn -ntp clean package`.
+
 ## Verification results (every line was actually executed)
 
 | What | Command | Result |
@@ -31,7 +38,7 @@ HTML report, benchmarks and documentation. **Full v0.2 compliance is NOT claimed
 | chronos-store | 21 | `TimelineStoreTest` |
 | chronos-runtime | 16 | `EngineTest` |
 | chronos-analysis | 17 | `CausalGraphTest` 7, `ComparatorTest` 10 |
-| chronos-cli | 109 | `AcceptanceTest` 5, `LawsTest` 18 (M1-M14), `KnownAnswerTest` 9, `PersistenceTest` 4, `CliTest` 20, `PinnedPolicyTest` 3, `AnalyserMutationTest` 3, `M10CatalogueTest` 2, `LawSweepTest` 3, `DemoScriptsTest` 1, `BlindKitTest` 2, `TraceabilityTest` 2, `InterventionFuzzTest` 1, `CorruptionFuzzTest` 3, `OmissionScopeStudyTest` 2, `NodeLocalReplayTest` 5, `ViewerTest` 2, `SoakTest` 4, `GoldenFileTest` 2, `FaultCatalogueTest` 15 |
+| chronos-cli | 109 | `AcceptanceTest` 5, `LawsTest` 20 (M1-M14), `KnownAnswerTest` 9, `PersistenceTest` 4, `CliTest` 20, `PinnedPolicyTest` 3, `AnalyserMutationTest` 3, `M10CatalogueTest` 2, `LawSweepTest` 3, `DemoScriptsTest` 1, `BlindKitTest` 2, `TraceabilityTest` 2, `InterventionFuzzTest` 1, `CorruptionFuzzTest` 3, `OmissionScopeStudyTest` 2, `NodeLocalReplayTest` 5, `ViewerTest` 2, `SoakTest` 4, `GoldenFileTest` 2, `FaultCatalogueTest` 16 |
 | chronos-bench | 8 | `BuildRulesTest` (dependency direction, banned APIs, approved libraries, soak harness) |
 
 ## What is implemented (modules)
