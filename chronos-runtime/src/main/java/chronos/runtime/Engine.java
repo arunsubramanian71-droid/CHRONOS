@@ -216,6 +216,21 @@ public final class Engine {
         return s.node.stateCodec().encode(s.state);
     }
 
+    /** The messages in flight right now, as the engine's agenda holds them: message id -> number of copies pending (for comparing with log reconstruction, FR-20). */
+    public Map<String, Integer> liveInflight() {
+        Map<String, Integer> m = new TreeMap<>();
+        for (AgendaItem i : agenda.sorted()) if (i.kind() == AgendaItem.Kind.DELIVERY) m.merge((String) i.data().get("messageId"), 1, Integer::sum);
+        return m;
+    }
+
+    /** The timers pending right now: "timerId|node|name|due". */
+    public List<String> liveTimers() {
+        List<String> out = new ArrayList<>();
+        for (NodeSlot s : slots) for (NodeSlot.PendingTimer t : s.timers.values()) out.add(t.id() + "|" + s.name + "|" + t.name() + "|" + t.due());
+        Collections.sort(out);
+        return out;
+    }
+
     public Map<String, Long> faultCoverage() {
         return faults.coverage();
     }

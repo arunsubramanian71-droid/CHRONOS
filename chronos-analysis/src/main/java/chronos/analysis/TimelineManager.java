@@ -85,24 +85,27 @@ public final class TimelineManager {
     /**
      * The first position at which a world can be restored: the end of the boot sequence (every NODE_STARTED, then the effects
      * of the start handlers). Group boundaries inside the boot sequence are commit points of the log but not worlds: only some
-     * nodes have started there. Found from the causal structure: a boot event is a NODE_STARTED or an effect (not a fault, not an
-     * intervention) whose step trigger is a NODE_STARTED.
+     * nodes have started there. Found from the group structure and causal edges: a boot group starts with a NODE_STARTED, or with an
+     * effect of a start handler (a node event whose step trigger is a NODE_STARTED), or is the invariant check on those.
      */
     public long bootEnd(String timelineId) {
         List<Event> es = store.events(timelineId);
         Set<String> starts = new HashSet<>();
-        long end = -1;
-        for (Event e : es) {
+        long end = -1, from = 0;
+        for (long groupEnd : store.groupEnds(timelineId)) {
+            Event first = es.get((int) from);
             boolean boot;
-            if (e.kind() == EventKind.NODE_STARTED) {
-                starts.add(e.eventId());
+            if (first.kind() == EventKind.NODE_STARTED) {
                 boot = true;
-            } else {
-                boot = e.kind() != EventKind.FAULT_INJECTED && e.kind() != EventKind.FAULT_CLEARED && e.kind() != EventKind.INTERVENTION_APPLIED
-                        && e.parents().stream().anyMatch(p -> p.kind() == EdgeKind.STEP_EFFECT && starts.contains(p.id()));
+            } else if (first.nodeId().equals(Event.ENV)) { // the invariant check after boot; a step that begins on env (a fault) is not boot
+                boot = first.kind() == EventKind.INVARIANT_VIOLATED && first.parents().stream().anyMatch(p -> p.kind() == EdgeKind.STEP_EFFECT && starts.contains(p.id()));
+            } else { // the effects of a start handler: a node event, not a trigger, whose step trigger is a NODE_STARTED
+                boot = !first.kind().isTrigger() && first.parents().stream().anyMatch(p -> p.kind() == EdgeKind.STEP_EFFECT && starts.contains(p.id()));
             }
             if (!boot) break;
-            end = e.seq();
+            for (long i = from; i <= groupEnd; i++) if (es.get((int) i).kind() == EventKind.NODE_STARTED) starts.add(es.get((int) i).eventId());
+            end = groupEnd;
+            from = groupEnd + 1;
         }
         return end;
     }

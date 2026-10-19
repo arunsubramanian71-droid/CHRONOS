@@ -129,13 +129,13 @@ Paths are relative to the module's `src/main/java/chronos/<package>/`.
 | Law | Test |
 |---|---|
 | M1 Replay | `LawsTest.m1_replayingAny...`, `m1_replayFromEveryCheckpoint...`, `m1_aMutatedRecording...`; `SoakTest` (1,350 chaos runs replay-verified) |
-| M2 Reconstruction | `LawsTest.m2_stateRebuiltFromTheLog...` |
+| M2 Reconstruction | `LawsTest.m2_stateRebuiltFromTheLog...`; `LawSweepTest.m2_stateInflightAndTimers...` (state, messages in flight and pending timers rebuilt from the log equal the **live engine** at every step of 40 chaos runs, more than 1,500 positions) |
 | M3 Clocks (incl. FAULT/WITNESS/OMISSION edges) | `LawsTest.m3_m4...`, `m3_faultWitnessAndOmission...`, `ClockServiceTest` |
 | M4 Graph | `LawsTest.m3_m4...`, `CausalGraphTest` |
 | M5 Snapshot | `EngineTest.checkpointRestoreThenRunEquals...`, `LawsTest.m5_everyStoredCheckpoint...` |
-| M6 Prefix | `LawsTest.m6_aBranchPrefix...` (incl. branch of branch), `AcceptanceTest.ad4` |
-| M7 No-op | `LawsTest.m7_aBranchWithNoInterventions...` |
-| M8 Locality | `LawsTest.m8_nodesWithNoCausalConnection...` (drop, delay, duplicate, crash interventions) |
+| M6 Prefix | `LawsTest.m6_aBranchPrefix...` (incl. branch of branch), `AcceptanceTest.ad4`; `LawSweepTest.m6AndM7...` |
+| M7 No-op | `LawsTest.m7_aBranchWithNoInterventions...`; `LawSweepTest.m6AndM7...` (288 no-op branches at random boundaries of 48 chaos runs, faults in force, Continue and Pinned, every branch replays) |
+| M8 Locality | `LawsTest.m8_nodesWithNoCausalConnection...` (drop, delay, duplicate, crash interventions); `LawSweepTest.m8...` (random local fault plans, drop, delay, duplicate, pause and skew interventions); `PinnedPolicyTest` (under Pinned) |
 | M9 Identity | `LawsTest.m9...` |
 | M10 Root | `LawsTest.m10...`, `M10CatalogueTest` (every intervention type; removal of every rule of 60 random plans; all branches replay), `AcceptanceTest.ad5`. Clause 1 holds in every test; clause 2 holds except the measured renumbering exception, lengthened partitions and config/reseed: DEV-28, DEV-29, DEV-36 |
 | M11 Immutability | `LawsTest.m11...` |
