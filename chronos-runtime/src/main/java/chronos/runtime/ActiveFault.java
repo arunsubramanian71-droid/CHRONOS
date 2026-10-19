@@ -19,6 +19,10 @@ final class ActiveFault {
     Map<String, Object> extra = new TreeMap<>();  // kind-specific data (slow link: sender, receiver, factor)
     Long extendedFrom;   // a partition whose heal an intervention moved later: from when the extra drops are the intervention's doing
     Ref extender;        // that intervention's event
+    Long shortenedFrom;  // a partition whose heal an intervention moved earlier: until when the original run would still have dropped deliveries
+    Ref shortener;       // that intervention's event
+    Ref alterer;         // an intervention that moved this fault's end (earlier or later) or removed it
+    long origEnd = Long.MAX_VALUE; // when the original run's fault would have ended (Long.MAX_VALUE: never); meaningful only with alterer
     final List<List<String>> groups;
     final String node;
 
@@ -60,6 +64,12 @@ final class ActiveFault {
         if (!extra.isEmpty()) m.put("extra", extra);
         if (extendedFrom != null) m.put("extendedFrom", extendedFrom);
         if (extender != null) m.put("extender", extender.toMap());
+        if (shortenedFrom != null) m.put("shortenedFrom", shortenedFrom);
+        if (shortener != null) m.put("shortener", shortener.toMap());
+        if (alterer != null) {
+            m.put("alterer", alterer.toMap());
+            m.put("origEnd", origEnd);
+        }
         m.put("groups", groups);
         if (node != null) m.put("node", node);
         return m;
@@ -78,6 +88,12 @@ final class ActiveFault {
         if (m.containsKey("extra")) f.extra = new TreeMap<>(Canon.map(m.get("extra")));
         if (m.containsKey("extendedFrom")) f.extendedFrom = Canon.num(m.get("extendedFrom"));
         if (m.containsKey("extender")) f.extender = Ref.fromMap(Canon.map(m.get("extender")));
+        if (m.containsKey("shortenedFrom")) f.shortenedFrom = Canon.num(m.get("shortenedFrom"));
+        if (m.containsKey("shortener")) f.shortener = Ref.fromMap(Canon.map(m.get("shortener")));
+        if (m.containsKey("alterer")) {
+            f.alterer = Ref.fromMap(Canon.map(m.get("alterer")));
+            f.origEnd = Canon.num(m.get("origEnd"));
+        }
         return f;
     }
 }

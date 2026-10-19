@@ -40,6 +40,8 @@ public final class Engine {
     private final Map<String, Long> envCounters = new TreeMap<>();  // identity counters for env events (fault:<rule>, inv:<name>)
     private final Set<String> violating = new TreeSet<>();
     private final Map<String, String> configOverrides = new TreeMap<>();   // CONFIG_PATCH interventions
+    private final Map<String, Ref> configRefs = new TreeMap<>();            // key -> the intervention that patched it: a handler that reads it is influenced by that intervention
+    private final Map<String, Ref> reseedRefs = new TreeMap<>();            // "node|stream" -> the intervention that reseeded it
     private Ref envLast;
     private long time;
     private long stepCount;
@@ -123,6 +125,8 @@ public final class Engine {
         e.firstViolationId = (String) d.get("firstViolationId");
         e.firstViolationInvariant = (String) d.get("firstViolationInvariant");
         if (d.containsKey("config")) for (Map.Entry<String, Object> en : Canon.map(d.get("config")).entrySet()) e.configOverrides.put(en.getKey(), (String) en.getValue());
+        if (d.containsKey("configRefs")) for (Map.Entry<String, Object> en : Canon.map(d.get("configRefs")).entrySet()) e.configRefs.put(en.getKey(), Ref.fromMap(Canon.map(en.getValue())));
+        if (d.containsKey("reseedRefs")) for (Map.Entry<String, Object> en : Canon.map(d.get("reseedRefs")).entrySet()) e.reseedRefs.put(en.getKey(), Ref.fromMap(Canon.map(en.getValue())));
         e.booted = true;
         return e;
     }
@@ -416,6 +420,7 @@ public final class Engine {
         if (t.last != null) links.add(new Link(t.last, EdgeKind.PROGRAM_ORDER));
         links.add(new Link(sendRef, EdgeKind.MESSAGE));
         for (Ref r : faults.ghostPartitionRefs(from, to, time)) links.add(new Link(r, EdgeKind.FAULT)); // delivered only because an intervention removed the partition
+        for (Ref r : faults.shortenedPartitionRefs(from, to, time)) links.add(new Link(r, EdgeKind.FAULT)); // delivered only because an intervention healed the partition earlier
         for (Object o : Canon.list(d.get("faultRefs"))) links.add(new Link(Ref.fromMap(Canon.map(o)), EdgeKind.FAULT));
         // a message sent while a partition cut its link, and delivered only because the partition healed, was altered by the heal
         if (d.containsKey("sentAt"))
@@ -440,6 +445,7 @@ public final class Engine {
         links.add(new Link(pt.setRef(), EdgeKind.TIMER));
         for (ActiveFault f : faults.omissionSources(s, pt.setAt(), time)) links.add(new Link(f.ref, EdgeKind.OMISSION));
         for (Ref r : faults.ghostOmissionRefs(s, pt.setAt(), time)) links.add(new Link(r, EdgeKind.FAULT)); // the OMISSION edge of a fault an intervention removed
+        for (Ref r : faults.windowAlterationRefs(s, pt.setAt(), time)) if (links.stream().noneMatch(l -> l.ref().equals(r) && l.kind() == EdgeKind.FAULT)) links.add(new Link(r, EdgeKind.FAULT)); // a fault window an intervention moved
         Event trig = emitNode(s, EventKind.TIMER_FIRED, mapOf("timerId", timerId, "name", pt.name()), links, null);
         group.add(trig);
         TimerFiring tf = new TimerFiring(timerId, pt.name());
@@ -494,6 +500,14 @@ public final class Engine {
                     f.extendedFrom = time + rule.num("duration") - by; // the heal an intervention moved later
                     f.extender = faults.ivRef(origin);
                 }
+                if (by != 0 && origin != null && faults.ivRef(origin) != null && rule.params().containsKey("duration")) {
+                    f.alterer = faults.ivRef(origin);
+                    f.origEnd = time + rule.num("duration") - by;
+                }
+                if (by < 0 && origin != null && faults.ivRef(origin) != null && rule.params().containsKey("duration")) {
+                    f.shortenedFrom = time + rule.num("duration") - by; // the heal an intervention moved earlier: the original run kept dropping until then
+                    f.shortener = faults.ivRef(origin);
+                }
                 faults.activate(f);
                 scheduleClear(rule, envIdx);
                 return null;
@@ -534,6 +548,10 @@ public final class Engine {
                 group.add(restart);
                 s.crashed = false;
                 ActiveFault crashFault = faults.activeCrash(s.name);
+                if (crashFault != null && origin != null && faults.ivRef(origin) != null) { // a restart an intervention added ends the crash earlier than the original run did
+                    crashFault.alterer = faults.ivRef(origin);
+                    crashFault.origEnd = faults.nextRestartAfter(s.name, time, ruleId);
+                }
                 if (crashFault != null) faults.close(crashFault, time);
                 runHandler(s, restart.ref(), group, ctx -> s.node.onRestart(ctx));
                 finishTrigger(s, restart, group, false);
@@ -823,10 +841,13 @@ public final class Engine {
             if (!active) throw new IllegalStateException("node context used outside its handler");
         }
 
+        private final List<Ref> influences = new ArrayList<>(); // interventions whose patched configuration this handler has read
+
         private List<Link> effectLinks() {
             List<Link> l = new ArrayList<>();
             if (slot.last != null) l.add(new Link(slot.last, EdgeKind.PROGRAM_ORDER));
             l.add(new Link(trigger, EdgeKind.STEP_EFFECT));
+            for (Ref r : influences) l.add(new Link(r, EdgeKind.FAULT)); // what the handler does after reading a patched value is that intervention's doing
             return l;
         }
 
@@ -854,6 +875,7 @@ public final class Engine {
         @Override
         public String config(String key) {
             String o = configOverrides.get(key);
+            if (o != null && configRefs.containsKey(key) && !influences.contains(configRefs.get(key))) influences.add(configRefs.get(key));
             return o != null ? o : scenario.config().get(key);
         }
 
@@ -931,6 +953,8 @@ public final class Engine {
                 agenda.removeIf(i -> i.kind() == AgendaItem.Kind.DELIVERY && i.identity().equals(ro[1]));
                 agenda.add(heldMsg.withDue(due + 1).withData(nd));
             }
+            Ref originRef = origin == null ? null : faults.ivRef(origin);
+            if (originRef != null && !faultRefs.contains(originRef)) faultRefs.add(originRef); // an event marked with an intervention's origin is that intervention's doing: link it
             agenda.add(deliveryItem(id, due, target.idx, id, slot.name, to, type, nbody, sref, faultRefs, origin, 0));
             for (int k = 0; k < dupCopies.size(); k++) {
                 long c = dupCopies.get(k);
@@ -970,7 +994,10 @@ public final class Engine {
             long ordinal = slot.randomOrdinals.merge(stream, 1L, Long::sum) - 1;
             long value = decisions.random(slot.name, stream, ordinal, computed);
             slot.randomStates.put(stream, SeededRandom.advance(st));
-            sink.add(emitNode(slot, EventKind.RANDOM_DRAWN, mapOf("stream", stream, "ordinal", ordinal, "value", value), effectLinks(), null));
+            List<Link> drawLinks = effectLinks();
+            Ref reseeded = reseedRefs.get(slot.name + "|" + stream);
+            if (reseeded != null && !influences.contains(reseeded)) drawLinks.add(new Link(reseeded, EdgeKind.FAULT)); // a draw from a reseeded stream is the intervention's doing
+            sink.add(emitNode(slot, EventKind.RANDOM_DRAWN, mapOf("stream", stream, "ordinal", ordinal, "value", value), drawLinks, null));
             return value;
         }
 
@@ -1042,7 +1069,10 @@ public final class Engine {
                 AgendaItem pending = agenda.find(i -> i.kind() == AgendaItem.Kind.FAULT && ruleId.equals(i.data().get("rule")) && "INJECT".equals(i.data().get("op")));
                 if (pending != null) faults.ghostStart(ruleId, pending.due()); // a rule triggered before the branch point but not yet fired: when it would have fired
                 agenda.removeIf(i -> i.kind() == AgendaItem.Kind.FAULT && ruleId.equals(i.data().get("rule")));
-                if (faults.activeByRule(ruleId) != null) { // an active partition heals, a paused node resumes, a skewed clock is restored, now
+                ActiveFault removing = faults.activeByRule(ruleId);
+                if (removing != null) { // an active partition heals, a paused node resumes, a skewed clock is restored, now
+                    removing.alterer = ivRef;
+                    removing.origEnd = r.params().containsKey("duration") ? removing.start + r.num("duration") : Long.MAX_VALUE;
                     faults.setOrigin(ruleId + "/clear", origin);
                     doClear(r, group);
                 }
@@ -1063,10 +1093,15 @@ public final class Engine {
                     if (clr == null) throw new IllegalArgumentException("intervention " + iv.id() + ": the partition never heals, nothing to shift");
                     agenda.removeIf(i -> i.identity().equals(clr.identity()));
                     agenda.add(clr.withDue(Math.max(time, clr.due() + by)));
+                    af.alterer = ivRef;
+                    af.origEnd = clr.due();
                     faults.setOrigin(ruleId + "/clear", origin);
                     if (by > 0) { // the drops of the extra time are the intervention's doing
                         af.extendedFrom = clr.due();
                         af.extender = ivRef;
+                    } else if (by < 0) {
+                        af.shortenedFrom = clr.due();
+                        af.shortener = ivRef;
                     }
                 } else {
                     AgendaItem inj = agenda.find(i -> i.kind() == AgendaItem.Kind.FAULT && ruleId.equals(i.data().get("rule")) && "INJECT".equals(i.data().get("op")));
@@ -1194,11 +1229,15 @@ public final class Engine {
                 agenda.add(withIntervention(ia.withDue(ib.due()), ivRef, origin));
                 agenda.add(withIntervention(ib.withDue(ia.due()), ivRef, origin));
             }
-            case Intervention.CONFIG_PATCH -> configOverrides.put((String) p.get("key"), (String) p.get("value"));
+            case Intervention.CONFIG_PATCH -> {
+                configOverrides.put((String) p.get("key"), (String) p.get("value"));
+                configRefs.put((String) p.get("key"), ivRef);
+            }
             case Intervention.RESEED_STREAM -> {
                 NodeSlot s = byName.get((String) p.get("node"));
                 if (s == null) throw new IllegalArgumentException("intervention " + iv.id() + ": unknown node " + p.get("node"));
                 s.randomStates.put((String) p.get("stream"), Canon.num(p.get("seed")));
+                reseedRefs.put(s.name + "|" + p.get("stream"), ivRef);
             }
             case Intervention.PATCH_STATE -> { /* applied before the event was recorded, see applyInterventions */ }
             default -> throw new IllegalArgumentException("unknown intervention type: " + iv.type());
@@ -1243,6 +1282,16 @@ public final class Engine {
         d.put("firstViolationId", firstViolationId);
         d.put("firstViolationInvariant", firstViolationInvariant);
         d.put("config", configOverrides);
+        if (!configRefs.isEmpty()) {
+            Map<String, Object> m = new TreeMap<>();
+            for (Map.Entry<String, Ref> en : configRefs.entrySet()) m.put(en.getKey(), en.getValue().toMap());
+            d.put("configRefs", m);
+        }
+        if (!reseedRefs.isEmpty()) {
+            Map<String, Object> m = new TreeMap<>();
+            for (Map.Entry<String, Ref> en : reseedRefs.entrySet()) m.put(en.getKey(), en.getValue().toMap());
+            d.put("reseedRefs", m);
+        }
         d.put("stopStatus", stopRequested && stopStatus != null ? stopStatus.name() : null);
         return new WorldImage(recorder.timelineId(), recorder.nextSeq() - 1, d);
     }

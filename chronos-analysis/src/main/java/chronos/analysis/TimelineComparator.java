@@ -97,6 +97,11 @@ public final class TimelineComparator {
         collectRoots('A', ea, ga, ca, prefix, roots, inDA);
         collectRoots('B', eb, gb, cb, prefix, roots, inDB);
 
+        // 5b. a root that is only a renumbered copy of an event of the other timeline's lane is not an independent root (DEV-36)
+        List<DivergenceReport.Displaced> displaced = new ArrayList<>();
+        List<Root> demoted = new ArrayList<>();
+        roots = demoteExplained(roots, ea, eb, ca, cb, prefix, displaced, demoted);
+
         // 6. order the roots
         List<Root> ordered = orderRoots(roots, order, ga, gb);
         Root primary = ordered.isEmpty() ? null : ordered.get(0);
@@ -105,8 +110,10 @@ public final class TimelineComparator {
                 flags.add("concurrent roots: " + primary.eventId() + " and " + r.eventId() + " are causally unrelated, neither is causally first (the order shown is a display convention)");
 
         // 7. divergence cone
-        BitSet coneBitsA = ga.causalFutureOf(ordered.stream().filter(r -> r.side() == 'A').map(Root::pos).toList());
-        BitSet coneBitsB = gb.causalFutureOf(ordered.stream().filter(r -> r.side() == 'B').map(Root::pos).toList());
+        List<Root> explaining = new ArrayList<>(ordered);
+        explaining.addAll(demoted); // the consequences of a displaced event are explained too
+        BitSet coneBitsA = ga.causalFutureOf(explaining.stream().filter(r -> r.side() == 'A').map(Root::pos).toList());
+        BitSet coneBitsB = gb.causalFutureOf(explaining.stream().filter(r -> r.side() == 'B').map(Root::pos).toList());
         int coneA = 0, coneB = 0;
         List<String> unexplained = new ArrayList<>(), coneIdsA = new ArrayList<>(), coneIdsB = new ArrayList<>();
         for (int i = inDA.nextSetBit(0); i >= 0; i = inDA.nextSetBit(i + 1)) if (coneBitsA.get(i)) { coneA++; coneIdsA.add(ea.get(i).eventId()); } else unexplained.add(timelineLabel(idA, ea.get(i)));
@@ -182,7 +189,7 @@ public final class TimelineComparator {
         }
 
         return new DivergenceReport(idA, idB, strict, prefix, counts, firstLocal, ordered, primary, coneA, coneB, new ArrayList<>(affected), unexplained,
-                failTl, failEvent, hops, note, outA, outB, flags, warnings, coneIdsA, coneIdsB);
+                failTl, failEvent, hops, note, outA, outB, flags, warnings, coneIdsA, coneIdsB, displaced);
     }
 
     // ------------------------------------------------------------------------------------------------------------
@@ -251,6 +258,78 @@ public final class TimelineComparator {
     }
 
     /** Walks the timeline in its own log order over its own causal graph: tainted = in D or has a tainted parent; root = in D with no tainted parent. */
+    private static String contentKey(Event e) {
+        return e.kind() + "|" + chronos.model.Canon.json(e.payload());
+    }
+
+    /**
+     * Splits off the roots that are not independent: (1) a root whose kind and payload occur at a different position of the same node's
+     * lane in the other timeline was only renumbered (DEV-36); (2) a root that is the node's first different event after a message to that
+     * node was dropped by an event that is itself divergent (an intervention's drop) is the node noticing the missing input (silence).
+     */
+    private static List<Root> demoteExplained(List<Root> roots, List<Event> ea, List<Event> eb, EventClass[] ca, EventClass[] cb, int prefix,
+                                              List<DivergenceReport.Displaced> displaced, List<Root> demoted) {
+        Map<String, Map<String, String>> laneA = new HashMap<>(), laneB = new HashMap<>(); // node -> content key -> first event id
+        for (int i = prefix; i < ea.size(); i++) laneA.computeIfAbsent(ea.get(i).nodeId(), k -> new HashMap<>()).putIfAbsent(contentKey(ea.get(i)), ea.get(i).eventId());
+        for (int i = prefix; i < eb.size(); i++) laneB.computeIfAbsent(eb.get(i).nodeId(), k -> new HashMap<>()).putIfAbsent(contentKey(eb.get(i)), eb.get(i).eventId());
+        List<Root> keep = new ArrayList<>();
+        Set<String> eaPrefix = new HashSet<>(), ebPrefix = new HashSet<>();
+        for (int i = 0; i < prefix; i++) {
+            eaPrefix.add(ea.get(i).eventId());
+            ebPrefix.add(eb.get(i).eventId());
+        }
+        for (Root r : roots) {
+            if (r.nodeId().equals(Event.ENV)) {
+                keep.add(r);
+                continue;
+            }
+            Set<String> mineIdsInPrefix = r.side() == 'A' ? eaPrefix : ebPrefix;
+            List<Event> mine = r.side() == 'A' ? ea : eb;
+            EventClass[] myClass = r.side() == 'A' ? ca : cb;
+            Event e = mine.get(r.pos());
+            String other = (r.side() == 'A' ? laneB : laneA).getOrDefault(r.nodeId(), Map.of()).get(contentKey(e));
+            if (other != null && !other.equals(r.eventId())) {
+                displaced.add(new DivergenceReport.Displaced(r.side(), r.eventId(), r.nodeId(), other, DivergenceReport.Displaced.RENUMBERED));
+                demoted.add(r);
+                continue;
+            }
+            // the event this one replaces in the other timeline (same id) depended on a message or a fault that this timeline does not reproduce
+            List<Event> theirs = r.side() == 'A' ? eb : ea;
+            Event counterpart = null;
+            for (int i = prefix; i < theirs.size(); i++) if (theirs.get(i).eventId().equals(r.eventId())) { counterpart = theirs.get(i); break; }
+            if (counterpart != null) {
+                String missingCause = null;
+                for (Parent par : counterpart.parents()) {
+                    if (par.kind() != EdgeKind.MESSAGE && par.kind() != EdgeKind.FAULT) continue;
+                    int at = -1;
+                    for (int i = prefix; i < mine.size(); i++) if (mine.get(i).eventId().equals(par.id())) { at = i; break; }
+                    boolean inPrefix = at < 0 && mineIdsInPrefix.contains(par.id());
+                    if (!inPrefix && (at < 0 || myClass[at] != EventClass.SAME)) { missingCause = par.id(); break; }
+                }
+                if (missingCause != null) {
+                    displaced.add(new DivergenceReport.Displaced(r.side(), r.eventId(), r.nodeId(), missingCause, DivergenceReport.Displaced.ABSENCE));
+                    demoted.add(r);
+                    continue;
+                }
+            }
+            String dropped = null;
+            for (int i = prefix; i < r.pos() && dropped == null; i++) {
+                Event d = mine.get(i);
+                if (d.kind() != EventKind.MESSAGE_DROPPED || myClass[i] == EventClass.SAME) continue;
+                String mid = (String) d.payload().get("messageId");
+                for (int j = 0; j < mine.size() && j < i; j++)
+                    if (mine.get(j).eventId().equals(mid) && r.nodeId().equals(mine.get(j).payload().get("to"))) { dropped = mid; break; }
+            }
+            if (dropped != null && (e.kind() == EventKind.TIMER_FIRED || e.kind() == EventKind.MESSAGE_DELIVERED)) {
+                displaced.add(new DivergenceReport.Displaced(r.side(), r.eventId(), r.nodeId(), dropped, DivergenceReport.Displaced.SILENCE));
+                demoted.add(r);
+            } else {
+                keep.add(r);
+            }
+        }
+        return keep;
+    }
+
     private static void collectRoots(char side, List<Event> es, CausalGraph g, EventClass[] cls, int prefix, List<Root> roots, BitSet inD) {
         boolean[] tainted = new boolean[es.size()];
         for (int pos = prefix; pos < es.size(); pos++) {
@@ -271,8 +350,8 @@ public final class TimelineComparator {
     /** Orders roots by (virtual time, node order with env last, intervention events first, event id); within one timeline a root that happened before another comes first. */
     private static List<Root> orderRoots(List<Root> roots, List<String> nodeOrder, CausalGraph ga, CausalGraph gb) {
         Comparator<Root> key = Comparator.comparingLong(Root::virtualTime)
+                .thenComparingInt(r -> r.eventId().startsWith("iv:") ? 0 : 1) // DEV-36: at equal time the intervention's own event is first (M10): it is applied at the branch point, before the step that follows
                 .thenComparingInt(r -> nodeOrder.indexOf(r.nodeId()))
-                .thenComparingInt(r -> r.eventId().startsWith("iv:") ? 0 : 1) // DEV-36: at equal time and node the intervention's own event is first (M10)
                 .thenComparing(Root::eventId)
                 .thenComparing(Root::side);
         List<Root> remaining = new ArrayList<>(roots);

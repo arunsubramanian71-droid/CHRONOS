@@ -20,7 +20,7 @@ class InterventionFuzzTest {
     @TempDir
     Path tmp;
 
-    private static Intervention random(SeededRandom r, List<Event> parent, long at, List<String> nodes, FaultPlan plan, int n) {
+    static Intervention random(SeededRandom r, List<Event> parent, long at, List<String> nodes, FaultPlan plan, int n) {
         long vt = parent.get((int) at).virtualTime();
         List<Event> futureSends = parent.stream().filter(e -> e.seq() > at && e.kind() == EventKind.MESSAGE_SENT).toList();
         List<Event> pastSends = parent.stream().filter(e -> e.seq() <= at && e.kind() == EventKind.MESSAGE_SENT).toList();

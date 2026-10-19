@@ -13,7 +13,19 @@ public record DivergenceReport(String timelineA, String timelineB, boolean stric
                                int coneA, int coneB, List<String> affectedNodes, List<String> unexplained,
                                String failureTimeline, String failureEvent, List<Hop> path, String pathNote,
                                String outcomeA, String outcomeB, List<String> flags, List<String> warnings,
-                               List<String> coneEventsA, List<String> coneEventsB) {
+                               List<String> coneEventsA, List<String> coneEventsB, List<Displaced> displaced) {
+
+    /**
+     * A divergent event that is not an independent root: node-local ids are per-node counters, so when one timeline has an event on a
+     * node's lane that the other lacks, every later event of that lane is renumbered. {@code sameContentAs} is the event of the other
+     * timeline's lane with the same kind and payload, which shows that this one only moved (reason "renumbered", DEV-36). The other
+     * reasons are "absence" (the event it replaces in the other timeline is a delivery whose send does not exist here) and "silence": the node's first different event is an input that did not arrive because an event that is itself in this
+     * divergence dropped the message ({@code relatedEvent}); this one is a potential link, in the spirit of an OMISSION edge, not a certain one.
+     * Either way its consequences stay in the cone.
+     */
+    public record Displaced(char side, String eventId, String nodeId, String relatedEvent, String reason) {
+        public static final String RENUMBERED = "renumbered", SILENCE = "silence", ABSENCE = "absence";
+    }
 
     /** One hop of the explanation path: from-event, to-event, the kind of link and a plain-language line. */
     public record Hop(String from, String to, EdgeKind kind, String text) {}
@@ -44,6 +56,14 @@ public record DivergenceReport(String timelineA, String timelineB, boolean stric
         for (TimelineComparator.Root r : roots)
             sb.append("    ").append(r == primary ? "* " : "  ").append(r.eventId()).append(" [").append(r.side() == 'A' ? timelineA : timelineB).append(", ").append(r.nodeId())
                     .append(", t=").append(r.virtualTime()).append(", ").append(r.cls()).append("]\n");
+        for (Displaced d : displaced)
+            sb.append("    (displaced, not a root: ").append(d.eventId()).append(" [").append(d.side() == 'A' ? timelineA : timelineB).append("] ")
+                    .append(d.reason().equals(Displaced.SILENCE)
+                            ? "follows the dropped message " + d.relatedEvent() + " to " + d.nodeId() + " (potential link: what the node was waiting for never came)"
+                            : d.reason().equals(Displaced.ABSENCE)
+                            ? "replaces an event of the other timeline that depended on " + d.relatedEvent() + ", which this timeline does not reproduce (potential link: the absence propagated)"
+                            : "has the content of " + d.relatedEvent() + " in the other timeline: an event before it on " + d.nodeId() + " shifted the node's numbering")
+                    .append(")\n");
         if (primary != null)
             sb.append("  FIRST CAUSAL DIVERGENCE: ").append(primary.eventId()).append(" (").append(primary.cls()).append(" on ").append(primary.nodeId()).append(" at t=")
                     .append(primary.virtualTime()).append(" ms, only in ").append(primary.side() == 'A' ? timelineA : timelineB).append(")\n");

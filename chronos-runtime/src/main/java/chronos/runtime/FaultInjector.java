@@ -266,6 +266,39 @@ final class FaultInjector {
         return out;
     }
 
+    /** Interventions that healed a partition earlier than the original run did, when this delivery (link from-to, at time now) would still have been dropped by it. */
+    List<Ref> shortenedPartitionRefs(String from, String to, long now) {
+        List<Ref> out = new ArrayList<>();
+        for (ActiveFault f : history)
+            if (f.kind.equals("partition") && f.shortener != null && f.shortenedFrom != null && f.cuts(from, to) && f.end != null && now >= f.end && now < f.shortenedFrom && !out.contains(f.shortener)) out.add(f.shortener);
+        return out;
+    }
+
+    /**
+     * Interventions that moved the end of (or removed) a fault that silences this node, when that changes whether the fault was in force
+     * during the timer's wait (D-23): the original run's timer firing has an OMISSION edge that this one lacks, or the reverse, and the
+     * intervention is why.
+     */
+    List<Ref> windowAlterationRefs(NodeSlot slot, long setAt, long fireAt) {
+        List<Ref> out = new ArrayList<>();
+        List<ActiveFault> all = new ArrayList<>(history);
+        all.addAll(active);
+        for (ActiveFault f : all) {
+            if (f.alterer == null || f.start > fireAt || !touches(slot, f)) continue;
+            boolean actual = f.end == null || f.end > setAt, original = f.origEnd > setAt;
+            if (actual != original && !out.contains(f.alterer)) out.add(f.alterer);
+        }
+        return out;
+    }
+
+    /** The earliest RESTART rule of a node after the given time that is still in the plan, or Long.MAX_VALUE. */
+    long nextRestartAfter(String node, long now, String exceptRule) {
+        long best = Long.MAX_VALUE;
+        for (FaultRule r : rules.values())
+            if (r.action() == FaultRule.FaultAction.RESTART && !r.id().equals(exceptRule) && node.equals(r.str("node")) && r.params().containsKey("at") && r.num("at") > now) best = Math.min(best, r.num("at"));
+        return best;
+    }
+
     /** Rules triggered by the recording of the given event that have not been scheduled yet. */
     List<FaultRule> afterEvent(String eventId) {
         List<FaultRule> out = new ArrayList<>();

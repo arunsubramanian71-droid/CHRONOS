@@ -29,6 +29,6 @@ mvn -ntp package
 java -jar chronos-cli\target\chronos.jar --data chronos-data demo
 ```
 
-Expected: `BUILD SUCCESS`, 186 tests, 0 failures, and `demonstration finished: 24 of 24 checks passed - ALL PASSED`. Please record the result
+Expected: `BUILD SUCCESS`, 189 tests, 0 failures, and `demonstration finished: 24 of 24 checks passed - ALL PASSED`. Please record the result
 (and any failure with its output) in `IMPLEMENTATION_STATUS.md`; until then Windows stays NOT VERIFIED. Likely places for a failure, if any:
 the process-kill test (`PersistenceTest`, uses `Process.destroyForcibly`), and path separators in test expectations.

@@ -10,9 +10,9 @@ import java.util.*;
 
 /**
  * M10 over the whole intervention catalogue: for a timeline and its branch made by intervention I, the first causal divergence is
- * I's own event, and every root of the branch lies in I's causal future. The second clause has one honest exception, DEV-36:
- * node-local ids are per-node counters, so when the baseline has an event on a node's lane that the branch lacks (or the reverse),
- * every later event of that lane is renumbered and the comparator reports the first renumbered event as a root of its own.
+ * I's own event, and every root of the branch lies in I's causal future. Node-local ids are per-node counters, so when one timeline has
+ * an event on a node's lane that the other lacks, later events of that lane are renumbered; the comparator reports those as displaced
+ * (not roots), after which the second clause holds without exception for every case below (DEV-36).
  */
 class M10CatalogueTest {
     @TempDir
@@ -45,13 +45,14 @@ class M10CatalogueTest {
         BitSet future = g.causalFutureOf(List.of(g.pos(iv.eventId())));
         for (var root : d.roots()) {
             if (root.side() != 'B' || future.get(root.pos())) continue;
-            if (allowRenumbering && renumbered(b.get(root.pos()), a)) {
-                renumberedRoots++;
-                continue;
-            }
             violations.add(label + ": root " + root.eventId() + " of the branch is outside the intervention's causal future");
         }
         if (!d.unexplained().isEmpty()) violations.add(label + ": unexplained " + d.unexplained());
+        for (DivergenceReport.Displaced x : d.displaced()) {
+            renumberedRoots++;
+            Event shown = (x.side() == 'B' ? b : a).stream().filter(e -> e.eventId().equals(x.eventId())).findFirst().orElseThrow();
+            if (x.reason().equals(DivergenceReport.Displaced.RENUMBERED) && !renumbered(shown, x.side() == 'B' ? a : b)) violations.add(label + ": " + x.eventId() + " was reported as displaced but its content is not in the other timeline's lane");
+        }
     }
 
     @Test
@@ -82,7 +83,7 @@ class M10CatalogueTest {
     }
 
     @Test
-    void m10HoldsForRemovingAnyFaultRuleOfRandomPlansExceptForLaneRenumbering() {
+    void m10HoldsForRemovingAnyFaultRuleOfRandomPlansWithRenumberedEventsReportedAsDisplaced() {
         TestRegistry reg = new TestRegistry();
         for (long seed = 1; seed <= 60; seed++) {
             String sc = List.of("gossip", "re2", "ka2", "ka3", "control").get((int) (seed % 5));
@@ -106,8 +107,78 @@ class M10CatalogueTest {
             }
         }
         assertViolations(0, 100);
-        // the exception is rare: most removals are explained by direct links from the intervention
-        org.junit.jupiter.api.Assertions.assertTrue(renumberedRoots < compared / 5, renumberedRoots + " renumbered roots in " + compared + " comparisons");
+        // renumbered events are reported as displaced (and verified to be copies of the other lane's events), never as roots
+        org.junit.jupiter.api.Assertions.assertTrue(renumberedRoots > 0, "the scenario set does exercise lane renumbering");
+    }
+
+    @Test
+    void m10HoldsForRandomInterventionsOfEveryTypeAtRandomBoundariesOfChaosRuns() {
+        TestRegistry reg = new TestRegistry();
+        List<String> scenarios = List.of("gossip", "re", "re2", "ka2", "ka3", "twopairs", "tutorial");
+        long seeds = Long.parseLong(System.getenv().getOrDefault("CHRONOS_M10_SEEDS", "120"));
+        Map<String, int[]> byType = new TreeMap<>();
+        for (long seed = 1; seed <= seeds; seed++) {
+            String sc = scenarios.get((int) (seed % scenarios.size()));
+            Map<String, String> params = sc.equals("gossip") ? Map.of("nodes", "4", "horizon", "400") : Map.of();
+            var scenario = reg.create(sc, params);
+            FaultPlan plan = ChaosPlanGenerator.generate(scenario, seed, sc.equals("gossip") ? 400 : scenario.defaultHorizon());
+            Env env = new Env(tmp.resolve("r" + seed));
+            env.record(sc, seed, params, plan, Boolean.FALSE);
+            String t0 = env.last;
+            List<Event> parent = env.events(t0);
+            SeededRandom rnd = new SeededRandom(seed * 17);
+            List<String> nodes = env.store.header(t0).nodes();
+            for (int k = 0; k < 3; k++) {
+                long boot = env.manager.bootEnd(t0);
+                long at = env.manager.roundToBoundary(t0, boot + Math.floorMod(rnd.nextLong(), (long) Math.max(1, parent.size() - boot - 1)));
+                Intervention iv = InterventionFuzzTest.random(rnd, parent, at, nodes, plan, k);
+                if (iv.type().equals(Intervention.ADD_INPUT)) continue; // an arbitrary input body may make the application itself fail
+                try {
+                    int before = violations.size();
+                    check(env, t0, sc + " seed " + seed + " " + iv.type() + " " + Canon.json(iv.params()), at, iv, false);
+                    byType.computeIfAbsent(iv.type(), t -> new int[2])[0]++;
+                    if (violations.size() > before) byType.get(iv.type())[1]++;
+                } catch (IllegalArgumentException refused) {
+                    // an invalid intervention is refused with a message (InterventionFuzzTest checks that); nothing to compare
+                }
+            }
+        }
+        System.out.println("M10 by type (compared, violating): " + byType.entrySet().stream().map(e -> e.getKey() + "=" + e.getValue()[0] + "/" + e.getValue()[1]).toList());
+        if (seeds <= 500) org.junit.jupiter.api.Assertions.assertEquals(List.of(), violations.stream().limit(10).toList(), "no exception in the default sweep");
+        else { // a long measurement run (CHRONOS_M10_SEEDS=4000): the residual rate is documented, so bound it instead of requiring zero
+            System.out.println("M10 residual in long run: " + violations.size() + " of " + compared + " " + violations);
+            org.junit.jupiter.api.Assertions.assertTrue(violations.size() * 1000L <= compared, violations.size() + " violations in " + compared + " comparisons: " + violations);
+        }
+        org.junit.jupiter.api.Assertions.assertTrue(compared >= seeds, "compared " + compared);
+    }
+
+    @Test
+    void m10RegressionsFoundBySweepingTheCatalogue() {
+        // each of these left a root of the branch outside the intervention's causal future before the corresponding link existed
+        Env env = new Env(tmp.resolve("reg"));
+        env.record("re", 42, Map.of(), null, Boolean.FALSE);
+        String t0 = env.last;
+        long at = env.manager.roundToBoundary(t0, 36);
+        long mid = env.manager.roundToBoundary(t0, 30);
+        check(env, t0, "heal 150 ms earlier (deliveries the original run dropped)", at, Intervention.shiftHeal("h1", "partition-pb", -150), false);
+        check(env, t0, "heal 150 ms later", at, Intervention.shiftHeal("h2", "partition-pb", 150), false);
+        check(env, t0, "heartbeat period patched (a timer set from a patched value)", mid, Intervention.configPatch("c1", "heartbeat", "60"), false);
+        check(env, t0, "watchdog patched", mid, Intervention.configPatch("c2", "watchdog", "900"), false);
+        Env tut = new Env(tmp.resolve("tut"));
+        tut.record("tutorial", 42, Map.of(), null, Boolean.FALSE);
+        String u0 = tut.last;
+        long uat = tut.manager.roundToBoundary(u0, 10);
+        String future = tut.events(u0).stream().filter(e -> e.seq() > uat && e.kind() == EventKind.MESSAGE_SENT).skip(2).findFirst().orElseThrow().eventId();
+        check(tut, u0, "duplicate of a future message (the original delivery carries the intervention's origin)", uat, Intervention.duplicateMessage("d1", future), false);
+        // a crash ended earlier by a restart intervention: timers set afterwards lose the OMISSION edge the original run gave them
+        Env cr = new Env(tmp.resolve("cr"));
+        cr.record("re", 42, Map.of(), FaultPlan.of(FaultRule.crash("c", "p", 150)), Boolean.FALSE);
+        String r0 = cr.last;
+        long rat = cr.manager.roundToBoundary(r0, 30);
+        long rvt = cr.events(r0).get((int) rat).virtualTime();
+        check(cr, r0, "restart of a crashed node", rat, Intervention.restartNode("r1", "p", Math.max(rvt, 200)), false);
+        org.junit.jupiter.api.Assertions.assertEquals(List.of(), violations);
+        org.junit.jupiter.api.Assertions.assertTrue(compared >= 5, "compared " + compared);
     }
 
     private void assertViolations(int expected, int minCompared) {

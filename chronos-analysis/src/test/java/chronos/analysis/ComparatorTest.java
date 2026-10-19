@@ -193,6 +193,36 @@ class ComparatorTest {
     }
 
     @Test
+    void anEventThatOnlyMovedBecauseAnEarlierLaneEventIsMissingIsDisplacedNotARoot() {
+        // A has notes m1 then m2 on lane a; B lacks m1, so B's a#2 is A's m2 renumbered. Only the lost m1 is a real root.
+        TraceBuilder A = new TraceBuilder("A", "a");
+        A.at(0).node("a", NODE_STARTED, p());
+        A.at(10).node("a", APP_NOTE, p("text", "m1"));
+        A.at(20).node("a", APP_NOTE, p("text", "m2"));
+        TraceBuilder B = new TraceBuilder("B", "a");
+        B.at(0).node("a", NODE_STARTED, p());
+        B.at(20).node("a", APP_NOTE, p("text", "m2"));
+        MemoryTimelines m = new MemoryTimelines();
+        A.finish(m, TimelineStatus.COMPLETED);
+        B.finish(m, TimelineStatus.COMPLETED);
+        DivergenceReport d = new TimelineComparator(m).compare("A", "B", false);
+        assertEquals(List.of("a#2"), d.roots().stream().map(TimelineComparator.Root::eventId).toList(), d.text());
+        assertEquals('A', d.roots().get(0).side());
+        assertEquals(1, d.displaced().size());
+        assertEquals(new DivergenceReport.Displaced('B', "a#2", "a", "a#3", DivergenceReport.Displaced.RENUMBERED), d.displaced().get(0));
+        assertTrue(d.unexplained().isEmpty(), "the displaced event's consequences stay explained");
+        assertTrue(d.text().contains("displaced, not a root"));
+        // a genuinely different event is still a root
+        TraceBuilder C = new TraceBuilder("C", "a");
+        C.at(0).node("a", NODE_STARTED, p());
+        C.at(20).node("a", APP_NOTE, p("text", "something else"));
+        C.finish(m, TimelineStatus.COMPLETED);
+        DivergenceReport e = new TimelineComparator(m).compare("B", "C", false);
+        assertTrue(e.displaced().isEmpty());
+        assertEquals(2, e.roots().size());
+    }
+
+    @Test
     void anOutputDifferenceDespiteIdenticalInputsIsFlaggedAsSuspectedNondeterminism_FR43() {
         TraceBuilder A = new TraceBuilder("A", "a");
         Event s = A.at(0).node("a", NODE_STARTED, p());
