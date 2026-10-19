@@ -11,7 +11,7 @@ It is implemented from the architecture contract `CHRONOS System Specification v
 Terms such as *Node API*, *event*, *step*, *timeline*, *intervention*, *OMISSION edge* and *first causal divergence* are used
 exactly as the specification defines them.
 
-> **Status in one paragraph.** All eight modules exist and build (verified on macOS and on Linux); 150 automated tests pass; the flagship
+> **Status in one paragraph.** All eight modules exist and build (verified on macOS and on Linux); 155 automated tests pass; the flagship
 > demonstration (acceptance demonstrations AD-1 to AD-6 and known-answer scenarios KA-0, KA-2, KA-3, KA-4 on the replicated store "RE")
 > runs from one command with 24 self-checks; the whole fault catalogue and the whole intervention catalogue of the specification are
 > implemented and tested. What is **not** done (for example the blind
@@ -68,7 +68,7 @@ java -version && mvn -version      # both must report Java 21
 ## Build and test
 
 ```bash
-mvn -ntp package          # compiles all eight modules, runs all 150 tests, builds the two jars
+mvn -ntp package          # compiles all eight modules, runs all 155 tests, builds the two jars
 ```
 
 Produces `chronos-cli/target/chronos.jar` (the CLI) and `chronos-bench/target/chronos-bench.jar` (benchmarks). Dependencies are
@@ -119,6 +119,7 @@ Below, `chronos` stands for `java -jar chronos-cli/target/chronos.jar`.
 | Which combination of fault rules is critical? (KA-4) | `chronos causes T0` |
 | What had node b heard about p at this event? The smallest consistent cut containing events? | `chronos inspect T0 --knows b#12` · `chronos inspect T0 --cut b#12,client#3` (also `knows`/`cut` in `session`) |
 | Browse timelines in a browser: slider, diagram, world, why, compare (read-only live viewer) | `chronos serve --port 8080`, then open http://127.0.0.1:8080/ |
+| Check or rebuild the derived index files (`index/main.idx`) | `chronos reindex [T0] [--check]` |
 | Re-run one node alone from its recorded inputs and check its outputs (R5) | `chronos local-replay T0 [b]` |
 | Which single change to the causal past makes the failure disappear? (intervention search) | `chronos search T0 [--max 64] [--keep]` |
 | Find a failing run by chaos (random fault plans, parallel) | `chronos campaign re --seeds 1-200 --chaos --param partition=off --keep` |
@@ -152,7 +153,7 @@ Measured results (and which targets of Section 8 were met or missed) are in [`do
 ## Limitations (summary; details in the documents above)
 
 * Simulation only (D-03): no real network, no real processes; applications are written against the Node API.
-* Not implemented: persisted index files, and a **blind** debugging evaluation with a second person
+* Not implemented: log compression, and a **blind** debugging evaluation with a second person
   (`docs/EVALUATION.md` evaluates the analysers on 800 unplanned chaos runs instead, and says what that does not show).
 * Verified on macOS (Apple Silicon, JDK 21) and on Linux (Ubuntu 24.04 in a container); **Windows is not verified**.
 * A counterfactual is evidence about the simulated world under CHRONOS's rules, not proof about reality (Section 19).

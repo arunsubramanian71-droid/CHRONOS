@@ -44,6 +44,7 @@ final class Cli {
               compare <A> <B> [--strict]                  first causal divergence, cone and explanation path
               causes <timeline> [--max-size K] [--threads N]    which fault rules are critical (combinations)
               serve [--port 8080] [--bind 127.0.0.1] [--seconds N]   live local viewer (read-only web page on the JDK HTTP server)
+              reindex [timeline] [--check]       rebuild the derived index files from the log (--check: only report whether they load)
               local-replay <timeline> [node]      re-execute one node (or each node) alone from its recorded inputs and check its outputs (R5)
               search <timeline> [--max N] [--threads N] [--keep]   intervention search: which single changes to the causal past make the failure disappear
               campaign <scenario> --seeds A-B [--threads N] [--chaos] [--param k=v]... [--keep]
@@ -103,6 +104,17 @@ final class Cli {
             case "search" -> search(args);
             case "local-replay" -> localReplay(args);
             case "serve" -> serve(args);
+            case "reindex" -> {
+                for (String id : args.positionalCount() > 0 ? List.of(args.positional(0, "timeline")) : store.timelineIds()) {
+                    String before = store.index(id).source();
+                    if (args.has("check")) out.println(id + ": indexes " + before);
+                    else {
+                        store.rebuildIndex(id);
+                        out.println(id + ": index file rewritten from the log (was " + before + ")");
+                    }
+                }
+                yield 0;
+            }
             case "campaign" -> campaign(args);
             case "report" -> report(args);
             case "delete" -> {

@@ -63,7 +63,7 @@ D-01 to D-22 "Approved" but D-23 to D-26 "New in v0.2". All four were implemente
 | ID | What is simplified |
 |---|---|
 | DEV-15 | World images (checkpoints) are canonical JSON trees built by the runtime (`WorldImage` holds an opaque map), not typed record hierarchies. Completeness is enforced by law M5, tested at every checkpoint of every demo. |
-| DEV-16 | Indexes by position, node, kind and virtual time (FR-18) are built in memory from the log when a timeline is opened (`TimelineIndex`); they are not persisted under `index/`. They are derived and rebuildable either way. |
+| DEV-16 | **Indexes (FR-18) are persisted** under `index/main.idx` when a timeline finishes (binary: node lanes, kind lanes and a virtual-time sample table as delta-varints, with a CRC-32), and loaded with a validity check (format, event count, first and last event id, checksum, a sample of entries against the log). A missing or suspect file is rebuilt from the log in memory; reading never rewrites it (NFR-04); `chronos reindex` repairs the files. What is NOT stored: byte offsets into the log segments, because the store loads a whole timeline into memory. **Measured honestly (B6b):** loading the persisted indexes (0.8 ms at 20,000 events) is about as fast as rebuilding them (1.0 ms); the cost of opening a timeline is parsing the log (62 ms), which the index does not avoid. The files satisfy the specification's storage layout and its rebuild rule; they are not a performance feature. A branch's index covers the parent's prefix by cutting the parent's index at the branch point. |
 | DEV-17 | Stepped replay with breakpoints (R3/FR-24) is `ReplayEngine.runUntil` and the session command `run-to` (breakpoints on an event kind, node, text, virtual time or the violation); there is no separate stepping UI. |
 | DEV-18 | The HTML report draws at most the first 600 events in the SVG diagram and 3,000 table rows. |
 | DEV-19 | `maxFirings` on fault rules is validated (allowed only on time-triggered rules) but time-triggered rules fire once, so it is not enforced as a counter. |
@@ -73,7 +73,7 @@ D-01 to D-22 "Approved" but D-23 to D-26 "New in v0.2". All four were implemente
 
 The Pinned continuation policy (deferred by D-15);
 log compression (cut line);
-persisted index files; the blind debugging protocol of Phase 17 (it needs a second person); verification on **Windows**.
+the blind debugging protocol of Phase 17 (it needs a second person); verification on **Windows**.
 (macOS and Linux were verified; see `IMPLEMENTATION_STATUS.md`.)
 
 ## Known limitations of what *is* implemented

@@ -2,6 +2,7 @@ package chronos.analysis;
 
 import chronos.model.*;
 import chronos.store.TimelineIndex;
+import chronos.store.TimelineStore;
 
 import java.util.*;
 import java.util.function.Predicate;
@@ -32,7 +33,7 @@ public final class TimeTravelSession {
         this.events = log.events(timelineId);
         if (events.isEmpty()) throw new IllegalStateException("timeline " + timelineId + " has no events");
         this.graph = CausalGraph.build(events);
-        this.index = new TimelineIndex(events);
+        this.index = log instanceof TimelineStore ts ? ts.index(timelineId) : new TimelineIndex(events);
         this.groupEnds = log.groupEnds(timelineId);
         this.cursor = events.size() - 1;
     }

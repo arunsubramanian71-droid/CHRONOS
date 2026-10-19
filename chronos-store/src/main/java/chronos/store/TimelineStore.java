@@ -155,6 +155,12 @@ public final class TimelineStore implements LogReader {
         Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
     }
 
+    static void atomicWriteBytes(Path target, byte[] content) throws IOException {
+        Path tmp = target.resolveSibling(target.getFileName() + ".tmp");
+        Files.write(tmp, content);
+        Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+    }
+
     private Path dirOf(String id) {
         if (id.contains("/") || id.contains("\\") || id.contains("..")) throw new IllegalArgumentException("bad timeline id: " + id);
         return root.resolve("timelines").resolve(id);
@@ -283,8 +289,48 @@ public final class TimelineStore implements LogReader {
         return own(id).discardedLines();
     }
 
+    /**
+     * The indexes of a timeline (FR-18): loaded from the persisted index files of the timeline and its ancestors when every one of
+     * them is present and checks out against the log, otherwise rebuilt from the log (see {@link TimelineIndex#source()}). Reading
+     * never writes: use {@link #rebuildIndex(String)} to repair the files.
+     */
     public TimelineIndex index(String id) {
-        return new TimelineIndex(events(id));
+        List<Event> resolved = events(id);
+        if (summary(id) != null) {
+            try {
+                List<TimelineIndex.Own> parts = new ArrayList<>();
+                List<Long> limits = new ArrayList<>();
+                boolean ok = true;
+                for (Segment seg : segments(id)) {
+                    Path f = dirOf(seg.timelineId()).resolve("index").resolve("main.idx");
+                    Own o = own(seg.timelineId());
+                    Optional<TimelineIndex.Own> own = Files.isRegularFile(f) ? TimelineIndex.readOwn(Files.readAllBytes(f), o.events()) : Optional.empty();
+                    if (own.isEmpty()) {
+                        ok = false;
+                        break;
+                    }
+                    parts.add(own.get());
+                    limits.add(seg.toSeq());
+                }
+                if (ok) return TimelineIndex.assemble(resolved, parts, limits);
+            } catch (IOException e) {
+                // unreadable index files are as good as missing: fall through to the rebuild
+            }
+        }
+        return new TimelineIndex(resolved);
+    }
+
+    /** Rewrites a finished timeline's own index file from its log (repair after loss or damage). Returns the new index's source. */
+    public synchronized void rebuildIndex(String id) {
+        if (summary(id) == null) throw new IllegalStateException("timeline " + id + " is not finished; its indexes are written when it finishes");
+        try {
+            TimelineIndex.Builder b = new TimelineIndex.Builder();
+            for (Event e : own(id).events()) b.add(e);
+            Files.createDirectories(dirOf(id).resolve("index"));
+            atomicWriteBytes(dirOf(id).resolve("index").resolve("main.idx"), b.toBytes());
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     @Override

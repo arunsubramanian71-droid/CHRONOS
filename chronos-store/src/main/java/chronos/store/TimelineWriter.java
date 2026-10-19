@@ -35,6 +35,7 @@ public final class TimelineWriter implements EventSink {
     private final long simulatedGroupDelayNanos;   // benchmark hook (B13): pretend the disk is slow
     private volatile int queueHighWater;
 
+    private final TimelineIndex.Builder indexBuilder = new TimelineIndex.Builder();
     private int segmentIndex = -1;
     private int eventsInSegment;
     private OutputStream out;
@@ -124,6 +125,8 @@ public final class TimelineWriter implements EventSink {
                     try {
                         flush();
                         TimelineStore.atomicWrite(dir.resolve("summary.json"), Canon.json(f.summary().toMap()) + "\n");
+                        Files.createDirectories(dir.resolve("index"));
+                        TimelineStore.atomicWriteBytes(dir.resolve("index").resolve("main.idx"), indexBuilder.toBytes()); // derived: may be lost and rebuilt
                         store.noteFinished(timelineId, f.summary().status());
                         f.done().complete(null);
                     } catch (Throwable t) {
@@ -146,7 +149,10 @@ public final class TimelineWriter implements EventSink {
     private void writeGroup(List<Event> group) throws IOException {
         if (out == null || eventsInSegment >= segmentSize) rollSegment();
         StringBuilder sb = new StringBuilder();
-        for (Event e : group) sb.append(e.toLine()).append('\n');
+        for (Event e : group) {
+            sb.append(e.toLine()).append('\n');
+            indexBuilder.add(e);
+        }
         String lines = sb.toString();
         String commit = Canon.json(java.util.Map.of("commit", group.get(group.size() - 1).seq(), "h", Canon.sha256(lines), "n", group.size())) + "\n";
         out.write((lines + commit).getBytes(StandardCharsets.UTF_8));

@@ -26,7 +26,7 @@ Paths are relative to the module's `src/main/java/chronos/<package>/`.
 | D-08 | Event id = node + counter; message id = send id | runtime `Engine` | `EngineTest` | COMPLETE |
 | D-09 | Canonical JSON via Jackson, own digest rules | model `Canon` | `CanonTest` | COMPLETE |
 | D-10 | Digest every step, full state on change | runtime `Engine.finishTrigger` | `LawsTest.m2` | COMPLETE |
-| D-11 | Segmented JSON-lines log, commit lines, derived indexes, checkpoints, no DB | store `TimelineStore`, `TimelineWriter`, `TimelineIndex` | `TimelineStoreTest`, `PersistenceTest` | COMPLETE (indexes in memory: DEV-16) |
+| D-11 | Segmented JSON-lines log, commit lines, derived indexes, checkpoints, no DB | store `TimelineStore`, `TimelineWriter`, `TimelineIndex` | `TimelineStoreTest`, `PersistenceTest` | COMPLETE (persisted, validated, rebuildable: DEV-16) |
 | D-12 | Immutable timelines, branch references prefix | store `TimelineStore.events/segments`; analysis `TimelineManager` | `LawsTest.m6, m11`, `TimelineStoreTest` | COMPLETE |
 | D-13 | Fault rules keyed by time/identity; triggers at time, after a named event, on message id, nth message, probabilistic; `nonLocal` wildcard | model `FaultRule`, `FaultPlan`; runtime `FaultInjector` | `CanonTest.faultRuleValidationFollowsD13`, `LawsTest.m8`, `FaultCatalogueTest` | COMPLETE (`maxFirings` validated only: DEV-19; the Stretch trigger "on node state" is COMPLETE: `FaultRule.onState`, first time a watched field equals a value, `FaultCatalogueTest.aRuleCanFireTheFirstTimeANodesStateSatisfiesAPredicate`) |
 | D-14 | Own causal graph on dense arrays | analysis `CausalGraph` | `CausalGraphTest`, `LawsTest.m3_m4` | COMPLETE |
@@ -63,7 +63,7 @@ Paths are relative to the module's `src/main/java/chronos/<package>/`.
 | 15 | Vector vs reachability self-check | `CausalGraph.selfCheck`; `LawsTest.m3_m4`, `SoakTest` | COMPLETE |
 | 16 | Segmented log, format version, torn final record | store; `TimelineStoreTest`, `PersistenceTest` (kills a real process) | COMPLETE |
 | 17 | Catalogue: metadata, parent, branch point | `TimelineStore`; `TimelineStoreTest` | COMPLETE |
-| 18 | Indexes by position, node, kind, virtual time | `TimelineIndex` | SIMPLIFIED (in memory: DEV-16) |
+| 18 | Indexes by position, node, kind, virtual time | `TimelineIndex`, `TimelineStore.index/rebuildIndex`, CLI `reindex`, bench B6b | COMPLETE (DEV-16): persisted in `index/main.idx`, validated on load, rebuilt from the log if missing or suspect; `TimelineStoreTest` (round trip incl. branches and 2,100 events, damage cases, NFR-04), `CliTest.reindex...`, `LawsTest.m11`; no byte-offset table, and loading them is not faster than rebuilding (measured) |
 | 19 | Canonical state, digest every step | `Engine.finishTrigger`; `LawsTest.m2` | COMPLETE |
 | 20 | Reconstruct state, in-flight, timers from the log only | `TimeTravelSession`; `LawsTest.m2`, `AcceptanceTest.ad3` | COMPLETE |
 | 21 | Checkpoints at interval and branch points; restorable | `Engine.captureImage/restore`; `LawsTest.m5` | COMPLETE |

@@ -206,7 +206,7 @@ class TimelineStoreTest {
     }
 
     @Test
-    void readingNeverModifiesAnyFile_NFR04() throws IOException {
+    void readingNeverModifiesAnyFile_NFR04() throws Exception {
         TimelineStore store = new TimelineStore(tmp);
         write(store, header("T0", null, -1), 0, 3, 2, 3, 2);
         write(store, header("T0.1", "T0", 4), 5, 3, 2);
@@ -220,11 +220,11 @@ class TimelineStoreTest {
         assertEquals(before, hashes());
     }
 
-    private Map<String, String> hashes() throws IOException {
+    private Map<String, String> hashes() throws IOException, java.security.NoSuchAlgorithmException {
         Map<String, String> m = new TreeMap<>();
         try (Stream<Path> s = Files.walk(tmp)) {
             for (Path p : (Iterable<Path>) s.filter(Files::isRegularFile)::iterator)
-                m.put(tmp.relativize(p).toString(), Canon.sha256(Files.readString(p)));
+                m.put(tmp.relativize(p).toString(), HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(p))));
         }
         return m;
     }
@@ -263,5 +263,128 @@ class TimelineStoreTest {
         w.finish(summary(2));
         w.close();
         assertEquals(1, new TimelineStore(tmp).checkpointAtOrBefore("T0", 99).orElseThrow().seq());
+    }
+
+    // ------------------------------------------------------------------------------------------ persisted indexes (FR-18)
+    /** Like write, but events alternate between nodes a, b and env and between kinds, as a real recording does. */
+    static long writeMixed(TimelineStore store, TimelineHeader h, long first, int segSize, int... groupSizes) {
+        TimelineWriter w = store.openWriter(h, segSize);
+        long seq = first;
+        Map<String, Integer> counters = new HashMap<>();
+        for (int g : groupSizes) {
+            List<Event> group = new ArrayList<>();
+            for (int i = 0; i < g; i++) {
+                String node = new String[]{"a", "b", "env"}[(int) (seq % 3)];
+                EventKind kind = new EventKind[]{EventKind.APP_NOTE, EventKind.TIMER_FIRED, EventKind.MESSAGE_SENT}[(int) (seq % 3)];
+                int k = counters.merge(h.timelineId() + node, 1, Integer::sum);
+                String id = node.equals("env") ? "fault:r#" + seq : node + "#" + (first + k);
+                group.add(new Event(id, seq, h.timelineId(), node, kind, seq / 2, seq + 1, List.of((int) seq, 0, 0), List.of(), Map.of("text", "e" + seq), "d" + seq, null, null));
+                seq++;
+            }
+            w.append(group);
+        }
+        w.finish(summary(seq));
+        w.close();
+        return seq - 1;
+    }
+
+    private static void assertSameIndex(TimelineIndex expected, TimelineIndex actual, List<Event> events) {
+        assertEquals(expected.size(), actual.size());
+        for (String n : expected.nodes()) assertArrayEquals(expected.positionsOfNode(n), actual.positionsOfNode(n), n);
+        assertEquals(expected.nodes(), actual.nodes());
+        for (EventKind k : EventKind.values()) assertArrayEquals(expected.positionsOfKind(k), actual.positionsOfKind(k), k.name());
+        for (Event e : events) assertEquals(expected.positionOf(e.eventId()), actual.positionOf(e.eventId()), e.eventId());
+        for (long t = -1; t <= events.get(events.size() - 1).virtualTime() + 2; t++) assertEquals(expected.firstAtOrAfter(t), actual.firstAtOrAfter(t), "t=" + t);
+        assertEquals(-1, actual.positionOf("nope#1"));
+    }
+
+    @Test
+    void indexesArePersistedWhenATimelineFinishesAndLoadedAgainIdenticallyIncludingForBranches() throws IOException {
+        TimelineStore store = new TimelineStore(tmp);
+        writeMixed(store, header("T0", null, -1), 0, 100, 2, 3, 2, 4, 3, 2);
+        writeMixed(store, header("T0.1", "T0", 4), 5, 120, 3, 2, 4);
+        assertTrue(Files.isRegularFile(tmp.resolve("timelines/T0/index/main.idx")));
+        assertTrue(Files.isRegularFile(tmp.resolve("timelines/T0.1/index/main.idx")));
+        TimelineStore fresh = new TimelineStore(tmp);
+        for (String id : List.of("T0", "T0.1")) {
+            TimelineIndex persisted = fresh.index(id);
+            assertEquals("persisted", persisted.source(), id);
+            assertSameIndex(new TimelineIndex(fresh.events(id)), persisted, fresh.events(id));
+        }
+    }
+
+    @Test
+    void persistedIndexesOfLongTimelinesMatchRebuiltOnesAcrossBranchCuts() throws IOException {
+        TimelineStore store = new TimelineStore(tmp);
+        int[] groups = new int[700];
+        Arrays.fill(groups, 3);
+        long last = writeMixed(store, header("T0", null, -1), 0, 500, groups); // 2,100 events: many time samples and several segments
+        assertEquals(2099, last);
+        writeMixed(store, header("T0.1", "T0", 1034), 1035, 500, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3);
+        TimelineStore fresh = new TimelineStore(tmp);
+        for (String id : List.of("T0", "T0.1")) {
+            TimelineIndex persisted = fresh.index(id);
+            assertEquals("persisted", persisted.source(), id);
+            assertSameIndex(new TimelineIndex(fresh.events(id)), persisted, fresh.events(id));
+        }
+    }
+
+    @Test
+    void aMissingOrDamagedIndexIsRebuiltFromTheLogAndRepairedOnRequest() throws IOException {
+        TimelineStore store = new TimelineStore(tmp);
+        writeMixed(store, header("T0", null, -1), 0, 100, 2, 3, 2, 4);
+        Path file = tmp.resolve("timelines/T0/index/main.idx");
+        byte[] good = Files.readAllBytes(file);
+        List<Event> events = new TimelineStore(tmp).events("T0");
+        // missing
+        Files.delete(file);
+        TimelineIndex rebuilt = new TimelineStore(tmp).index("T0");
+        assertEquals("rebuilt", rebuilt.source());
+        assertSameIndex(new TimelineIndex(events), rebuilt, events);
+        // flipped byte: caught by the checksum
+        byte[] bad = good.clone();
+        bad[bad.length / 2] ^= 0x55;
+        Files.write(file, bad);
+        assertEquals("rebuilt", new TimelineStore(tmp).index("T0").source());
+        // truncated and empty
+        Files.write(file, Arrays.copyOf(good, good.length - 7));
+        assertEquals("rebuilt", new TimelineStore(tmp).index("T0").source());
+        Files.write(file, new byte[0]);
+        assertEquals("rebuilt", new TimelineStore(tmp).index("T0").source());
+        // a well-formed index that belongs to a different log (right checksum, wrong events) is also refused
+        TimelineStore other = new TimelineStore(tmp.resolve("other"));
+        writeMixed(other, header("T0", null, -1), 0, 100, 5, 5);
+        byte[] foreign = Files.readAllBytes(tmp.resolve("other/timelines/T0/index/main.idx"));
+        Files.write(file, foreign);
+        assertEquals("rebuilt", new TimelineStore(tmp).index("T0").source());
+        // reading never repaired it (NFR-04) ...
+        assertArrayEquals(foreign, Files.readAllBytes(file));
+        // ... the explicit repair does
+        TimelineStore repair = new TimelineStore(tmp);
+        repair.rebuildIndex("T0");
+        assertArrayEquals(good, Files.readAllBytes(file), "the repaired file equals what the writer produced");
+        assertEquals("persisted", new TimelineStore(tmp).index("T0").source());
+        // an index written for an unfinished timeline does not exist, and cannot be forced
+        assertThrows(IllegalStateException.class, () -> {
+            TimelineStore s2 = new TimelineStore(tmp.resolve("unfinished"));
+            TimelineWriter w = s2.openWriter(header("U", null, -1));
+            w.append(List.of(ev("U", 0, "a", 1)));
+            w.close();
+            s2.rebuildIndex("U");
+        });
+    }
+
+    @Test
+    void theIndexFileIsSmallComparedWithTheLog() throws IOException {
+        TimelineStore store = new TimelineStore(tmp);
+        int[] groups = new int[400];
+        Arrays.fill(groups, 2);
+        writeMixed(store, header("T0", null, -1), 0, 100, groups);
+        long log = 0;
+        try (Stream<Path> s = Files.list(tmp.resolve("timelines/T0/events"))) {
+            for (Path p : (Iterable<Path>) s::iterator) log += Files.size(p);
+        }
+        long idx = Files.size(tmp.resolve("timelines/T0/index/main.idx"));
+        assertTrue(idx * 5 < log, "index " + idx + " bytes vs log " + log + " bytes");
     }
 }

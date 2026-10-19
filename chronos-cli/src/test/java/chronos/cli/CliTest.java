@@ -177,6 +177,23 @@ class CliTest {
     }
 
     @Test
+    void reindexReportsAndRepairsTheDerivedIndexFiles() throws Exception {
+        cli("run", "re", "--no-stop");
+        cli("branch", "T0", "--heal-earlier", "200");
+        assertTrue(cli("reindex", "--check").out().contains("T0: indexes persisted") && cli("reindex", "--check").out().contains("T0.1: indexes persisted"));
+        Files.delete(tmp.resolve("data/timelines/T0/index/main.idx"));
+        // inspection still works without the file (the log is the only thing that must be right) and does not recreate it
+        assertEquals(0, cli("inspect", "T0", "--goto", "violation", "--why").code());
+        assertFalse(Files.exists(tmp.resolve("data/timelines/T0/index/main.idx")));
+        R chk = cli("reindex", "--check");
+        assertTrue(chk.out().contains("T0: indexes rebuilt") && chk.out().contains("T0.1: indexes rebuilt"), chk.out());
+        R fix = cli("reindex", "T0");
+        assertTrue(fix.out().contains("index file rewritten"), fix.out());
+        assertTrue(cli("reindex", "--check").out().contains("T0: indexes persisted"));
+        assertEquals(1, cli("reindex", "nope").code());
+    }
+
+    @Test
     void searchRanksTheSingleChangesThatMakeTheFailureDisappear() {
         cli("run", "re");
         R r = cli("search", "T0", "--max", "40", "--threads", "2");

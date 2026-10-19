@@ -365,7 +365,7 @@ class LawsTest {
 
     // ---------------------------------------------------------------- M11 immutability
     @Test
-    void m11_filesOfACompletedTimelineNeverChange() throws IOException {
+    void m11_filesOfACompletedTimelineNeverChange() throws Exception {
         Env env = new Env(tmp);
         env.record("re", 42, Map.of(), null, Boolean.FALSE);
         String t0 = env.last;
@@ -379,15 +379,18 @@ class LawsTest {
         s.world();
         s.why(null);
         new TimelineComparator(env.store).compare(t0, "T0.1", true);
+        assertTrue(before.containsKey("index/main.idx"), "the derived index is part of the timeline's files");
+        assertEquals("persisted", env.store.index(t0).source(), "sessions use the persisted indexes");
+        assertEquals("persisted", env.store.index("T0.1").source());
         assertEquals(before, hashes(tmp.resolve("timelines").resolve(t0)));
         // the catalogue lists the tree
         assertEquals(List.of("T0.1", "T0.2"), env.store.children(t0));
     }
 
-    private Map<String, String> hashes(Path dir) throws IOException {
+    private Map<String, String> hashes(Path dir) throws Exception {
         Map<String, String> m = new TreeMap<>();
         try (Stream<Path> s = Files.walk(dir)) {
-            for (Path p : (Iterable<Path>) s.filter(Files::isRegularFile)::iterator) m.put(dir.relativize(p).toString(), Canon.sha256(Files.readString(p)));
+            for (Path p : (Iterable<Path>) s.filter(Files::isRegularFile)::iterator) m.put(dir.relativize(p).toString(), HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(p))));
         }
         return m;
     }

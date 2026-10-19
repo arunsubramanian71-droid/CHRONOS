@@ -7,6 +7,7 @@ import chronos.demo.Gossip;
 import chronos.model.*;
 import chronos.runtime.*;
 import chronos.sdk.Scenario;
+import chronos.store.TimelineIndex;
 import chronos.store.TimelineStore;
 import chronos.store.TimelineWriter;
 
@@ -57,6 +58,7 @@ public final class BenchMain {
             encoding();
             graphAndSeek(quick ? new int[]{10_000} : new int[]{10_000, 100_000});
             replaySpeed(quick ? new int[]{10_000} : new int[]{10_000, 100_000});
+            persistedOpen(quick ? 20_000 : 100_000);
             branching(quick ? 20_000 : 100_000);
             counterfactualThreads();
             interventionSearch();
@@ -359,6 +361,47 @@ public final class BenchMain {
         });
         double limit = size <= 100_000 ? 1000 : 5000;
         row("B6", "How fast can we seek?", events.size() + " events", "worst of 100 jumps + world", seek, "ms", (seek.p99 < limit ? "meets" : "MISSES") + " NFR-06 (<" + (long) limit + " ms); opening the session (graph + indexes): " + fmt(open) + " ms");
+    }
+
+    // ------------------------------------------------------------------------------------------------------------
+    // B6b: opening a persisted timeline, with the persisted index files and without them
+    // ------------------------------------------------------------------------------------------------------------
+
+    private static void persistedOpen(int size) throws IOException {
+        Path d = tempDir("chronos-b6b-");
+        try {
+            TimelineStore store = new TimelineStore(d);
+            long h = horizonFor(5, size);
+            Recording.record(store, REG, "T0", Recording.Spec.of("gossip", 1).withParams(Map.of("nodes", "5", "horizon", Long.toString(h))).withCheckpointInterval(1000));
+            Path dir = d.resolve("timelines/T0");
+            long logBytes = dirBytes(dir.resolve("events")), idxBytes = Files.size(dir.resolve("index/main.idx"));
+            int n = store.events("T0").size();
+            Stats parse = Stats.measure(reps, () -> {
+                TimelineStore fresh = new TimelineStore(d);
+                long t = System.nanoTime();
+                fresh.events("T0");
+                return (System.nanoTime() - t) / 1e6;
+            });
+            row("B6b", "What does opening a persisted timeline cost?", n + " events", "parse the log from disk", parse, "ms", fmt((double) logBytes / n) + " bytes/event on disk");
+            TimelineStore warm = new TimelineStore(d);
+            List<Event> events = warm.events("T0");
+            Stats load = Stats.measure(reps, () -> {
+                long t = System.nanoTime();
+                TimelineIndex ix = warm.index("T0");
+                double ms = (System.nanoTime() - t) / 1e6;
+                if (!ix.source().equals("persisted")) throw new IllegalStateException("index was not loaded from its file");
+                return ms;
+            });
+            row("B6b", "What does opening a persisted timeline cost?", n + " events", "load persisted indexes", load, "ms", idxBytes + " bytes (" + fmt((double) idxBytes / n) + " bytes/event)");
+            Stats rebuild = Stats.measure(reps, () -> {
+                long t = System.nanoTime();
+                new TimelineIndex(events);
+                return (System.nanoTime() - t) / 1e6;
+            });
+            row("B6b", "What does opening a persisted timeline cost?", n + " events", "rebuild indexes from the log", rebuild, "ms", "the fallback when an index file is missing or suspect");
+        } finally {
+            deleteTree(d);
+        }
     }
 
     // ------------------------------------------------------------------------------------------------------------
