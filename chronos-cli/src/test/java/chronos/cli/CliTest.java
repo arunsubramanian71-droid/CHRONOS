@@ -226,6 +226,22 @@ class CliTest {
     }
 
     @Test
+    void injectAddsFaultsToARecordedRunAndReplayIsTheVerifier() {
+        cli("run", "re", "--param", "partition=off", "--no-stop");
+        R inj = cli("inject", "T0", "--fault", "partition:300:400:p|b");
+        assertEquals(0, inj.code(), inj.err() + inj.out());
+        assertTrue(inj.out().contains("recorded T1: re") && inj.out().contains("INVARIANT VIOLATED: single-primary"), inj.out());
+        R rp = cli("replay", "T1");
+        assertEquals(0, rp.code(), rp.err());
+        assertEquals(cli("verify", "T1").out(), rp.out(), "replay is the verify command");
+        assertEquals(1, cli("inject", "T0").code(), "inject without a fault is a usage error");
+        cli("branch", "T1", "--heal-earlier", "200");
+        R br = cli("inject", "T1.1", "--fault", "crash:b:100");
+        assertEquals(1, br.code());
+        assertTrue(br.err().contains("is a branch"), br.err());
+    }
+
+    @Test
     void searchRanksTheSingleChangesThatMakeTheFailureDisappear() {
         cli("run", "re");
         R r = cli("search", "T0", "--max", "40", "--threads", "2");

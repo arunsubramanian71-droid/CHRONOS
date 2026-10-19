@@ -111,7 +111,8 @@ Below, `chronos` stands for `java -jar chronos-cli/target/chronos.jar`.
 | Why did it fail? (causal past + chains from faults, inputs and starts) | `chronos inspect T0 --goto violation --why` |
 | Interactive-style session from stdin (`goto`, `step`, `back`, `state`, `world`, `why`, `find`, `watch`, `diff`, `run-to`, `branch` ...) | `chronos session T0` |
 | Stepped replay: re-execute (verifying) until a breakpoint and inspect the live world | `echo "run-to time=500 node=p" \| chronos session T0` |
-| Replay and verify every regenerated event against the log | `chronos verify T0` (from a checkpoint: `--from-checkpoint 26`) |
+| Replay and verify every regenerated event against the log | `chronos verify T0` or `chronos replay T0` (from a checkpoint: `--from-checkpoint 26`) |
+| Inject more faults into a recorded run (new run, same scenario and seed) | `chronos inject T0 --fault partition:300:400:p\|b` |
 | Same scenario twice in this JVM and in 2 fresh JVMs; compare log hashes | `chronos determinism re --seed 42 --jvm 2` |
 | What if the partition had healed 200 ms earlier? | `chronos branch T0 --heal-earlier 200` |
 | Other interventions | `--remove-fault RULE` · `--heal-later MS` · `--drop MSGID` · `--delay MSGID:MS` · `--duplicate MSGID` · `--swap MSG:MSG` · `--crash NODE:AT` · `--restart NODE:AT` · `--pause NODE:AT:DUR` · `--skew NODE:AT:OFFSET` · `--add-input NODE:AT:JSON` · `--remove-input N` · `--config K=V` · `--reseed NODE:STREAM:SEED` · `--patch-state NODE:volatile.f=V` (synthetic) · `--at SEQ\|EVENT\|violation` |

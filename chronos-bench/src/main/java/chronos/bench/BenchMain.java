@@ -23,7 +23,7 @@ import java.util.stream.Stream;
  * measurement is repeated (default 5, the first discarded as warm-up) and reported as median / p95 / p99; the environment is
  * recorded; results go to a CSV file. Misses against the targets of Section 8 are reported, not hidden.
  *
- * usage: java -jar chronos-bench/target/chronos-bench.jar [all|soak|jmh] [--quick] [--csv FILE] [--soak-seeds N] [--no-xl]
+ * usage: java -jar chronos-bench/target/chronos-bench.jar [all|xl|soak|nfr01|eval|jmh] [--quick] [--csv FILE] [--soak-seeds N] [--no-xl]
  */
 public final class BenchMain {
     private static final DemoRegistry REG = new DemoRegistry();
@@ -50,6 +50,12 @@ public final class BenchMain {
             soak(soakSeeds);
         } else if (cmd.equals("eval")) {
             evaluate(Integer.parseInt(opt(a, "--seeds", "400")));
+        } else if (cmd.equals("xl")) {
+            millionEvents(10);
+            millionEvents(20);
+            millionOnDisk(20);
+            writeCsv(Path.of(csv));
+            return;
         } else if (cmd.equals("nfr01")) {
             nfr01(Integer.parseInt(opt(a, "--seeds", "1000")));
         } else {
@@ -63,7 +69,11 @@ public final class BenchMain {
             counterfactualThreads();
             interventionSearch();
             slowDisk(quick ? 5_000 : 20_000);
-            if (xl) millionEvents();
+            if (xl) {
+                millionEvents(10);
+                millionEvents(20); // the top of the design envelope (NFR-09)
+                millionOnDisk(20);
+            }
             demoTime();
             soak(soakSeeds);
             nfr01(quick ? 100 : 1000);
@@ -546,19 +556,19 @@ public final class BenchMain {
     // XL: a million events
     // ------------------------------------------------------------------------------------------------------------
 
-    private static void millionEvents() {
+    private static void millionEvents(int nodes) {
         System.gc();
         long before = usedMemory();
-        Rec r = recordMem(10, 1_000_000, 1000);
+        Rec r = recordMem(nodes, 1_000_000, 1000);
         System.gc();
         long after = usedMemory();
         List<Event> ev = r.log().events();
-        row("XL", "Can a million-event timeline be recorded in memory?", ev.size() + " events, 10 nodes", "record time", fmt(r.ms()), "", "", "ms", fmt(ev.size() / (r.ms() / 1000)) + " events/s");
-        row("XL", "Memory profile of a million events", ev.size() + " events held in memory", "heap used", String.valueOf((after - before) / (1 << 20)), "", "", "MiB", (after - before) / ev.size() + " bytes per event (events + checkpoints + indexes of the log)");
+        row("XL", "Can a million-event timeline be recorded in memory?", ev.size() + " events, " + nodes + " nodes", "record time", fmt(r.ms()), "", "", "ms", fmt(ev.size() / (r.ms() / 1000)) + " events/s");
+        row("XL", "Memory profile of a million events", ev.size() + " events, " + nodes + " nodes, held in memory", "heap used", String.valueOf((after - before) / (1 << 20)), "", "", "MiB", (after - before) / ev.size() + " bytes per event (events + checkpoints + indexes of the log)");
         long t0 = System.nanoTime();
         CausalGraph g = CausalGraph.build(ev);
         double gb = (System.nanoTime() - t0) / 1e6;
-        row("XL", "Can the causal graph hold a million events?", ev.size() + " events", "graph build", fmt(gb), "", "", "ms", g.edgeCount() + " edges");
+        row("XL", "Can the causal graph hold a million events?", ev.size() + " events, " + nodes + " nodes", "graph build", fmt(gb), "", "", "ms", g.edgeCount() + " edges");
         MemoryTimelines mem = MemoryTimelines.of(new Recording.MemoryRun(r.log(), r.result(), r.header()));
         long t1 = System.nanoTime();
         TimeTravelSession s = new TimeTravelSession(mem, "T0");
@@ -571,11 +581,55 @@ public final class BenchMain {
             s.world();
             worst = Math.max(worst, (System.nanoTime() - t) / 1e6);
         }
-        row("XL", "Seek in a million-event timeline", ev.size() + " events", "worst of 100 jumps", fmt(worst), "", "", "ms", (worst < 5000 ? "meets" : "MISSES") + " NFR-06 (< 5000 ms); session open " + fmt(open) + " ms");
+        row("XL", "Seek in a million-event timeline", ev.size() + " events, " + nodes + " nodes", "worst of 100 jumps", fmt(worst), "", "", "ms", (worst < 5000 ? "meets" : "MISSES") + " NFR-06 (< 5000 ms); session open " + fmt(open) + " ms");
         long t2 = System.nanoTime();
         ReplayEngine.Result res = new ReplayEngine(mem, REG).verify("T0");
         double rep = (System.nanoTime() - t2) / 1e6;
-        row("XL", "Verification replay of a million events", ev.size() + " events", "replay time", fmt(rep), "", "", "ms", "verified=" + res.ok() + ", ratio to recording x" + fmt(rep / r.ms()) + (rep / r.ms() <= 2 ? " meets" : " MISSES") + " NFR-07 (<= 2x)");
+        row("XL", "Verification replay of a million events", ev.size() + " events, " + nodes + " nodes", "replay time", fmt(rep), "", "", "ms", "verified=" + res.ok() + ", ratio to recording x" + fmt(rep / r.ms()) + (rep / r.ms() <= 2 ? " meets" : " MISSES") + " NFR-07 (<= 2x)");
+    }
+
+    /** A million-event timeline written to and read back from disk by the real store (NFR-05 persisted, NFR-06, NFR-07, NFR-10 at scale). */
+    private static void millionOnDisk(int nodes) throws IOException {
+        Path d = tempDir("chronos-xld-");
+        try {
+            TimelineStore store = new TimelineStore(d);
+            long h = horizonFor(nodes, 1_000_000);
+            long t0 = System.nanoTime();
+            Recording.record(store, REG, "T0", Recording.Spec.of("gossip", 1).withParams(Map.of("nodes", Integer.toString(nodes), "horizon", Long.toString(h))).withCheckpointInterval(1000));
+            double recMs = (System.nanoTime() - t0) / 1e6;
+            long n = store.summary("T0").eventCount();
+            row("XL", "A million events persisted by the real store", n + " events, " + nodes + " nodes, on disk", "record + persist", fmt(recMs), "", "", "ms",
+                    fmt(n / (recMs / 1000)) + " events/s " + (n / (recMs / 1000) >= 20_000 ? "meets" : "MISSES") + " NFR-05 (>= 20,000/s persisted)");
+            long logBytes = dirBytes(d.resolve("timelines/T0/events")), all = dirBytes(d.resolve("timelines/T0"));
+            row("XL", "A million events persisted by the real store", n + " events, " + nodes + " nodes, on disk", "bytes per event", String.valueOf(logBytes / n), "", "", "bytes",
+                    "log " + logBytes / (1 << 20) + " MiB, whole timeline directory (checkpoints, indexes) " + all / (1 << 20) + " MiB");
+            TimelineStore fresh = new TimelineStore(d);
+            long t1 = System.nanoTime();
+            List<Event> ev = fresh.events("T0");
+            double parse = (System.nanoTime() - t1) / 1e6;
+            long t2 = System.nanoTime();
+            TimelineIndex ix = fresh.index("T0");
+            double idx = (System.nanoTime() - t2) / 1e6;
+            row("XL", "Opening a million persisted events in a fresh store", n + " events, " + nodes + " nodes", "parse the log", fmt(parse), "", "", "ms", "indexes " + ix.source() + " in " + fmt(idx) + " ms");
+            long t3 = System.nanoTime();
+            TimeTravelSession s = new TimeTravelSession(fresh, "T0");
+            double open = (System.nanoTime() - t3) / 1e6;
+            SeededRandom rnd = new SeededRandom(5);
+            double worst = 0;
+            for (int i = 0; i < 100; i++) {
+                long t = System.nanoTime();
+                s.goTo((int) Math.floorMod(rnd.nextLong(), (long) ev.size()));
+                s.world();
+                worst = Math.max(worst, (System.nanoTime() - t) / 1e6);
+            }
+            row("XL", "Seek in a million persisted events", n + " events, " + nodes + " nodes", "worst of 100 jumps", fmt(worst), "", "", "ms", (worst < 5000 ? "meets" : "MISSES") + " NFR-06 (< 5000 ms); session open " + fmt(open) + " ms (the log was already parsed)");
+            long t4 = System.nanoTime();
+            ReplayEngine.Result res = new ReplayEngine(fresh, REG).verify("T0");
+            double rep = (System.nanoTime() - t4) / 1e6;
+            row("XL", "Verification replay of a million persisted events", n + " events, " + nodes + " nodes", "replay time", fmt(rep), "", "", "ms", "verified=" + res.ok() + ", ratio to the persisted recording x" + fmt(rep / recMs) + (rep / recMs <= 2 ? " meets" : " MISSES") + " NFR-07 (<= 2x)");
+        } finally {
+            deleteTree(d);
+        }
     }
 
     private static long usedMemory() {

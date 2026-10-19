@@ -34,7 +34,9 @@ final class Cli {
               inspect <timeline> [--goto violation|SEQ|EVENT] [--back N] [--step N] [--state NODE]... [--world]
                                 [--inflight] [--timers] [--why [EVENT]] [--effects EVENT] [--concurrent EVENT]
               session <timeline>                          time-travel commands read from stdin (type 'help')
-              verify <timeline> [--from-checkpoint SEQ]   replay and verify every regenerated event against the log
+              inject <timeline> --fault SPEC [--fault SPEC]...   record a new run of that timeline's scenario and seed with extra faults added to its plan
+              verify|replay <timeline> [--from-checkpoint SEQ]   replay and verify every regenerated event against the log
+              inject <timeline> --fault SPEC [--fault SPEC]...   record a new run of that timeline's scenario and seed with extra faults added to its plan
               determinism <scenario> [--seed N] [--param k=v]... [--jvm N]    run twice (and in N fresh JVMs), compare log hashes
               branch|counterfactual <timeline> [--at SEQ|EVENT|violation] [--horizon MS] [--label TEXT]
                                 [--heal-earlier MS | --heal-later MS [--rule R]] [--remove-fault R] [--drop MSG]
@@ -95,7 +97,8 @@ final class Cli {
             case "show" -> show(args);
             case "inspect" -> inspect(args);
             case "session" -> session(args);
-            case "verify" -> verify(args);
+            case "verify", "replay" -> verify(args);
+            case "inject" -> inject(args);
             case "determinism" -> determinism(args);
             case "hash" -> hash(args);
             case "branch", "counterfactual" -> branch(args);
@@ -160,6 +163,27 @@ final class Cli {
         return 0;
     }
 
+    private FaultPlan injectBase;
+
+    /** inject: record a new run of an existing timeline's scenario, seed and fault plan with extra faults added (FR-47). */
+    private int inject(Args a) {
+        String tl = a.positional(0, "timeline");
+        TimelineHeader h = store.header(tl);
+        if (h.parentId() != null) throw new CliException(tl + " is a branch; inject adds faults to a recorded run (use `branch` for interventions)");
+        extraFaults = new ArrayList<>();
+        int n = 0;
+        for (String spec : a.all("fault")) extraFaults.add(parseFault(spec, ++n));
+        if (extraFaults.isEmpty()) throw new CliException("inject needs at least one --fault (see: chronos help)");
+        injectBase = h.faultPlan();
+        try {
+            record(h.scenario(), h.seed(), h.params(), "default", h.horizon(), h.stopOnViolation() ? null : Boolean.FALSE, a.num("checkpoint-every", 25), a.get("timeline"));
+        } finally {
+            extraFaults = List.of();
+            injectBase = null;
+        }
+        return 0;
+    }
+
     /** Records a scenario into the store and prints what happened. Returns the result; the new timeline id is in {@link #lastTimeline}. */
     RunResult record(String scenario, long seed, Map<String, String> params, String planMode, Long horizon, Boolean stop, long ckpt, String timelineId) {
         Scenario sc = registry.create(scenario, params);
@@ -171,7 +195,7 @@ final class Cli {
             default -> throw new CliException("--plan must be default, none or chaos");
         };
         if (!extraFaults.isEmpty()) {
-            FaultPlan base = plan != null ? plan : sc.defaultFaultPlan();
+            FaultPlan base = injectBase != null ? injectBase : plan != null ? plan : sc.defaultFaultPlan();
             for (FaultRule r : extraFaults) base = base.with(r);
             plan = base;
         }
