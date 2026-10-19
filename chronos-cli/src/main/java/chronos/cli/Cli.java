@@ -49,6 +49,10 @@ final class Cli {
               reindex [timeline] [--check]       rebuild the derived index files from the log (--check: only report whether they load)
               (any branching command) --pinned    use the Pinned continuation policy instead of Continue (D-15)
               blind prepare [--token HEX] | begin | answer --root RULE... [--notes TEXT] | grade     blind-debugging kit (docs/BLIND_PROTOCOL.md)
+              explore <scenario> [--max-faults K] [--times 100,300] [--duration D] [--nth N] [--kinds crash,partition,drop,pause] [--candidate SPEC]...
+                      [--max-cases N] [--stop-first] [--no-prune] [--base none|default] [--save] [--save-max N] [--list]   bounded systematic fault-schedule exploration
+              incident export <timeline> [--out FILE] | import FILE | info FILE | reproduce FILE    portable, checksummed incident bundle (lineage, evidence, reproduction)
+              counterexample <file>               re-execute a saved counterexample and check the same violation appears
               local-replay <timeline> [node]      re-execute one node (or each node) alone from its recorded inputs and check its outputs (R5)
               search <timeline> [--max N] [--threads N] [--keep]   intervention search: which single changes to the causal past make the failure disappear
               campaign <scenario> --seeds A-B [--threads N] [--chaos] [--param k=v]... [--keep]
@@ -110,6 +114,9 @@ final class Cli {
             case "local-replay" -> localReplay(args);
             case "serve" -> serve(args);
             case "blind" -> blind(args);
+            case "explore" -> explore(args);
+            case "incident" -> incident(args);
+            case "counterexample" -> counterexample(args);
             case "reindex" -> {
                 for (String id : args.positionalCount() > 0 ? List.of(args.positional(0, "timeline")) : store.timelineIds()) {
                     String before = store.index(id).source();
@@ -687,6 +694,102 @@ final class Cli {
         for (Map.Entry<String, Integer> en : g.frontier(cut).entrySet()) sb.append("    ").append(en.getKey()).append(": ").append(g.event(en.getValue()).eventId()).append(" at t=").append(g.event(en.getValue()).virtualTime()).append('\n');
         sb.append("  consistent: ").append(g.isConsistentCut(cut)).append('\n');
         return sb.toString();
+    }
+
+    /** Bounded systematic exploration of fault schedules (not fuzzing): every subset of at most K candidate faults, in a fixed order. */
+    private int explore(Args a) {
+        String scenario = a.positional(0, "scenario");
+        Map<String, String> params = params(a);
+        long seed = a.num("seed", 42);
+        Long horizon = a.has("horizon") ? a.num("horizon", 0) : null;
+        SystematicExplorer ex = new SystematicExplorer(registry);
+        List<SystematicExplorer.Candidate> cands = new ArrayList<>();
+        int n = 0;
+        for (String spec : a.all("candidate")) {
+            FaultRule r = parseFault(spec, ++n);
+            cands.add(new SystematicExplorer.Candidate(r.id(), r));
+        }
+        if (cands.isEmpty()) {
+            List<Long> times = new ArrayList<>();
+            for (String t : a.get("times", "100,300,500").split(",")) times.add(Long.parseLong(t.trim()));
+            Set<String> kinds = new TreeSet<>(Arrays.asList(a.get("kinds", "crash,partition,drop,pause").split(",")));
+            cands = ex.generate(scenario, params, seed, horizon, new SystematicExplorer.Grid(times, a.num("duration", 200), (int) a.num("nth", 2), kinds));
+        }
+        FaultPlan base = a.get("base", "none").equals("default") ? registry.create(scenario, params).defaultFaultPlan() : FaultPlan.empty();
+        SystematicExplorer.Config cfg = new SystematicExplorer.Config(scenario, params, seed, horizon, base, cands, (int) a.num("max-faults", 2), a.num("max-cases", 5000),
+                a.has("stop-first"), !a.has("no-prune"));
+        SystematicExplorer.Report rep = ex.explore(cfg);
+        out.print(rep.text());
+        if (a.has("list")) for (SystematicExplorer.Candidate c : cands) out.println("  candidate " + c.name() + ": " + Canon.json(c.rule().toMap()));
+        int kept = 0;
+        for (SystematicExplorer.Finding f : rep.findings()) {
+            if (!a.has("save") || kept++ >= a.num("save-max", 5)) continue;
+            String id = manager.allocateRootId();
+            Path file = Counterexample.save(store, registry, id, cfg, f);
+            out.println("  saved counterexample " + id + " (" + file + "); try: chronos inspect " + id + " --goto violation --why   |   chronos counterexample " + file);
+        }
+        return a.has("fail-on-violation") && !rep.findings().isEmpty() ? 1 : 0;
+    }
+
+    /** Portable incident bundles: export a timeline with its lineage and evidence, validate and import one, reproduce its failure. */
+    private int incident(Args a) {
+        String sub = a.positional(0, "export|import|info|reproduce");
+        try {
+            switch (sub) {
+                case "export" -> {
+                    String tl = a.positional(1, "timeline");
+                    Path outFile = Path.of(a.get("out", tl + ".chronos-incident"));
+                    IncidentBundle.export(store, tl, outFile);
+                    out.println("incident bundle written: " + outFile + " (" + Files.size(outFile) / 1024 + " KiB; timeline " + tl + " and its ancestors, checksummed; checkpoints and indexes are rebuilt on import)");
+                    out.println("on another machine: chronos --data DIR incident import " + outFile.getFileName() + "   then   chronos --data DIR incident reproduce " + outFile.getFileName());
+                    return 0;
+                }
+                case "info" -> {
+                    printInfo(IncidentBundle.inspect(Path.of(a.positional(1, "bundle file")), registry));
+                    return 0;
+                }
+                case "import" -> {
+                    IncidentBundle.Info info = IncidentBundle.importInto(store, Path.of(a.positional(1, "bundle file")), registry);
+                    out.println("imported incident " + info.incident() + " (" + info.lineage() + ") into " + dataDir + "; try: chronos inspect " + info.incident() + " --goto violation --why");
+                    for (String w : info.warnings()) out.println("  WARNING: " + w);
+                    return 0;
+                }
+                case "reproduce" -> {
+                    IncidentBundle.Reproduction r = IncidentBundle.reproduce(Path.of(a.positional(1, "bundle file")), registry);
+                    for (String c : r.checks()) out.println("  [ok] " + c);
+                    if (r.info() != null) for (String w : r.info().warnings()) out.println("  WARNING: " + w);
+                    for (String p : r.problems()) out.println("  [FAIL] " + p);
+                    out.println(r.ok() ? "INCIDENT REPRODUCED" : "INCIDENT NOT REPRODUCED");
+                    return r.ok() ? 0 : 2;
+                }
+                default -> throw new CliException("incident export|import|info|reproduce");
+            }
+        } catch (IncidentBundle.BundleException e) {
+            out.println("bundle REJECTED: " + e.getMessage());
+            return 2;
+        } catch (IOException e) {
+            throw new CliException("cannot read or write the bundle: " + e.getMessage());
+        }
+    }
+
+    private void printInfo(IncidentBundle.Info i) {
+        out.println("bundle valid: incident " + i.incident() + " (lineage " + i.lineage() + "), format version " + i.formatVersion() + ", written by " + i.tool());
+        out.println("  scenario " + i.scenario() + " " + i.params() + " seed=" + i.seed() + ", " + i.status() + ", " + i.events() + " events, log hash " + i.logHash());
+        out.println("  violation: " + (i.invariant() == null ? "none" : i.invariant() + " at " + i.violationEvent()));
+        for (String w : i.warnings()) out.println("  WARNING: " + w);
+    }
+
+    /** Re-executes a counterexample document and checks that the same execution and violation appear. */
+    private int counterexample(Args a) {
+        Path file = Path.of(a.positional(0, "counterexample file"));
+        Counterexample.Result r = Counterexample.verify(registry, file, store);
+        if (r.ok()) {
+            out.println("counterexample " + file.getFileName() + " REPRODUCED: the schedule re-executes to the same trace (" + r.traceDigest().substring(0, 12) + ") and the same violation");
+            return 0;
+        }
+        out.println("counterexample " + file.getFileName() + " NOT REPRODUCED:");
+        for (String p : r.problems()) out.println("  - " + p);
+        return 2;
     }
 
     /** The blind-debugging kit (Section 25): prepare a case from a token, begin, answer, grade. See docs/BLIND_PROTOCOL.md. */

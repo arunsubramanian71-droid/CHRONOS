@@ -87,6 +87,7 @@ public final class Viewer implements AutoCloseable {
                 switch (what) {
                     case "events" -> send(ex, 200, "application/json", Canon.json(events(id)));
                     case "at" -> send(ex, 200, "application/json", Canon.json(worldAt(id, Integer.parseInt(arg))));
+                    case "past" -> send(ex, 200, "application/json", Canon.json(past(id, arg)));
                     case "why" -> send(ex, 200, "text/plain; charset=utf-8", session(id).why(arg));
                     case "knows" -> send(ex, 200, "text/plain; charset=utf-8", session(id).knowledgeText(arg));
                     default -> send(ex, 404, "text/plain; charset=utf-8", "unknown resource");
@@ -156,6 +157,38 @@ public final class Viewer implements AutoCloseable {
         out.put("total", (long) all.size());
         out.put("truncated", all.size() > MAX_EVENTS);
         out.put("events", es);
+        return out;
+    }
+
+    /** The causal evidence for an event: its causal past (the suspects) and the shortest chains from faults, inputs and starts, each hop with its edge kind. */
+    private Map<String, Object> past(String id, String eventId) {
+        TimeTravelSession s = session(id);
+        int pos = s.graph().pos(eventId);
+        if (pos < 0) throw new IllegalArgumentException("no event " + eventId + " in " + id);
+        List<Object> past = new ArrayList<>();
+        for (int p : s.graph().causalPast(pos)) past.add(s.graph().event(p).eventId());
+        List<Object> chains = new ArrayList<>();
+        for (List<Integer> chain : s.whyChains(pos)) {
+            List<Object> hops = new ArrayList<>();
+            for (int i = 0; i < chain.size(); i++) {
+                Map<String, Object> h = new TreeMap<>();
+                h.put("event", s.graph().event(chain.get(i)).eventId());
+                if (i + 1 < chain.size()) {
+                    EdgeKind k = s.graph().edgeBetween(chain.get(i), chain.get(i + 1));
+                    h.put("edgeToNext", k.name());
+                    h.put("certain", k != EdgeKind.OMISSION); // OMISSION is a potential link, every other edge in a chain is certain
+                }
+                hops.add(h);
+            }
+            chains.add(hops);
+        }
+        Map<String, Object> out = new TreeMap<>();
+        out.put("event", eventId);
+        out.put("past", past);
+        out.put("chains", chains);
+        List<Object> silence = new ArrayList<>();
+        for (TimeTravelSession.Silence si : s.silence(pos)) silence.add(si.dropEventId() + " (potential: " + si.messageId() + " to " + si.node() + (si.faultRule() == null ? "" : " dropped by rule " + si.faultRule()) + ")");
+        out.put("possibleSilence", silence);
         return out;
     }
 

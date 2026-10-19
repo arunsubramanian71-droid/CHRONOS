@@ -168,6 +168,22 @@ $ run control
   expect: recorded T5
 ```
 
+## Systematic exploration of fault schedules (not fuzzing) and counterexamples
+
+```chronos-script
+$ explore re --param partition=off --max-faults 2 --times 100,300 --kinds crash,partition,pause --save --save-max 1
+  expect: EXHAUSTED
+  expect: single-primary
+  expect: saved counterexample T0
+$ inspect T0 --goto violation --why
+  expect: chain from fault:
+$ explore re --param partition=off --max-faults 2 --max-cases 10 --times 100,300
+  expect: CASE_LIMIT
+  expect: NOT explored
+$ explore control --max-faults 1 --times 30,90
+  expect: no invariant violation in the whole explored bound
+```
+
 ## Phase 15: the static HTML report (AD-6) and the live viewer
 
 ```chronos-script

@@ -379,6 +379,11 @@ public final class TimeTravelSession {
             sb.append("  chain from ").append(src.eventId()).append(" (").append(sourceLabel(src)).append("):\n");
             sb.append(renderChain(chain, "    "));
         }
+        // what kind of claim each edge makes (certain causes versus potential links)
+        Set<EdgeKind> used = new TreeSet<>();
+        for (List<Integer> chain : chains) for (int i = 0; i + 1 < chain.size(); i++) used.add(graph.edgeBetween(chain.get(i), chain.get(i + 1)));
+        if (used.contains(EdgeKind.OMISSION)) sb.append("  note: --OMISSION--> is a POTENTIAL link (a fault silenced the node while its timer waited; the timer might have fired anyway). Every other edge in these chains is a certain cause.\n");
+        if (used.contains(EdgeKind.WITNESS)) sb.append("  note: --WITNESS--> means the violated invariant read a state field that this event wrote last; it names the state the failure depends on, not why that state was written.\n");
         List<Silence> silence = silence(e);
         if (!silence.isEmpty()) {
             sb.append("  possible silence (potential, not certain: messages that never reached a node this invariant read, after the last write the violation depends on):\n");

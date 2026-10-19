@@ -44,7 +44,8 @@
     <div class="card"><h2>In flight / timers / clocks</h2><pre id="flight"></pre></div>
   </div>
   <div class="card"><h2>Why (for the selected event)</h2><pre id="why">click an event, or press "why" below</pre>
-    <button id="whyBtn">why this event</button> <button id="knowsBtn">what did its node know</button></div>
+    <button id="violBtn">go to the violation</button> <button id="whyBtn">why this event</button> <button id="pastBtn">highlight its causal past and chains</button> <button id="knowsBtn">what did its node know</button>
+    <div class="note">Certain causes are drawn solid; a potential link (OMISSION: a fault silenced a timer's wait) is dashed. The causal past is the set of suspects, not a proof of cause.</div></div>
   <div class="card" id="cmpCard" hidden><h2>Comparison</h2><pre id="cmpOut"></pre></div>
 </main>
 <script>
@@ -103,11 +104,11 @@ function drawDiagram(truncatedTotal) {
     if (p[1] !== 'MESSAGE' && p[1] !== 'FAULT' && p[1] !== 'OMISSION' && p[1] !== 'TIMER') return;
     const j = idx[p[0]]; if (j === undefined) return;
     const pe = events[j];
-    svg.appendChild(sv('line', {x1: x(j), y1: y(pe.node), x2: x(i), y2: y(e.node), stroke: p[1] === 'MESSAGE' ? 'var(--acc)' : p[1] === 'OMISSION' ? 'var(--mut)' : 'var(--bad)',
+    svg.appendChild(sv('line', {'data-from': pe.id, 'data-to': e.id, x1: x(j), y1: y(pe.node), x2: x(i), y2: y(e.node), stroke: p[1] === 'MESSAGE' ? 'var(--acc)' : p[1] === 'OMISSION' ? 'var(--mut)' : 'var(--bad)',
       'stroke-width': 1, opacity: 0.55, 'stroke-dasharray': p[1] === 'OMISSION' ? '4 3' : ''}));
   }));
   events.forEach((e, i) => {
-    const c = sv('circle', {cx: x(i), cy: y(e.node), r: e.kind === 'INVARIANT_VIOLATED' ? 6 : 3.5, fill: e.kind === 'INVARIANT_VIOLATED' ? 'var(--bad)' : e.kind.startsWith('FAULT') ? 'var(--bad)' : 'var(--fg)', style: 'cursor:pointer'});
+    const c = sv('circle', {'data-id': e.id, cx: x(i), cy: y(e.node), r: e.kind === 'INVARIANT_VIOLATED' ? 6 : 3.5, fill: e.kind === 'INVARIANT_VIOLATED' ? 'var(--bad)' : e.kind.startsWith('FAULT') ? 'var(--bad)' : 'var(--fg)', style: 'cursor:pointer'});
     c.appendChild(sv('title', {}, e.id + ' t=' + e.t + '  ' + e.text));
     c.addEventListener('click', () => { select(e); move(i); });
     svg.appendChild(c);
@@ -136,6 +137,24 @@ function select(e) { selected = e; $('why').textContent = e.id + ' selected. Pre
 $('tl').addEventListener('change', ev => load(ev.target.value));
 $('slider').addEventListener('input', ev => { clearTimeout(timer); const v = +ev.target.value; timer = setTimeout(() => move(v), 40); });
 $('whyBtn').addEventListener('click', async () => { if (selected) $('why').textContent = await get('/api/timeline/' + encodeURIComponent(current) + '/why/' + encodeURIComponent(selected.id)); });
+$('violBtn').addEventListener('click', async () => {
+  const info = window.TLS.find(t => t.id === current);
+  if (!info || !info.violationEvent) { $('why').textContent = 'this timeline has no invariant violation'; return; }
+  const i = events.findIndex(e => e.id === info.violationEvent);
+  if (i < 0) { $('why').textContent = 'the violation is beyond the events shown'; return; }
+  select(events[i]); await move(i);
+  $('why').textContent = await get('/api/timeline/' + encodeURIComponent(current) + '/why/' + encodeURIComponent(selected.id));
+});
+$('pastBtn').addEventListener('click', async () => {
+  if (!selected) return;
+  const d = await get('/api/timeline/' + encodeURIComponent(current) + '/past/' + encodeURIComponent(selected.id), true);
+  const past = new Set(d.past); past.add(d.event);
+  const chainEdges = new Set(); const potential = new Set();
+  d.chains.forEach(ch => ch.forEach((h, i) => { if (i + 1 < ch.length) { const k = h.event + '>' + ch[i + 1].event; chainEdges.add(k); if (!h.certain) potential.add(k); } }));
+  document.querySelectorAll('#diagram circle').forEach(c => { c.style.opacity = past.has(c.dataset.id) ? 1 : 0.25; c.setAttribute('stroke', past.has(c.dataset.id) ? 'var(--acc)' : 'none'); });
+  document.querySelectorAll('#diagram line[data-from]').forEach(l => { const k = l.dataset.from + '>' + l.dataset.to; if (chainEdges.has(k)) { l.setAttribute('stroke-width', 3); l.setAttribute('opacity', 1); l.setAttribute('stroke-dasharray', potential.has(k) ? '5 3' : ''); } });
+  $('why').textContent = 'causal past of ' + d.event + ': ' + d.past.length + ' suspect events (highlighted); ' + d.chains.length + ' chain(s) from faults, inputs and starts drawn thick; potential links dashed.' + (d.possibleSilence.length ? '\npossible silence (potential): ' + d.possibleSilence.join('; ') : '');
+});
 $('knowsBtn').addEventListener('click', async () => { if (selected) $('why').textContent = await get('/api/timeline/' + encodeURIComponent(current) + '/knows/' + encodeURIComponent(selected.id)); });
 $('cmp').addEventListener('click', async () => {
   $('cmpCard').hidden = false;

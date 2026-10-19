@@ -157,6 +157,26 @@ public final class TimelineStore implements LogReader {
         }
     }
 
+    /** The directory of a timeline's own files (the id is validated; nothing is created). */
+    public Path timelineDir(String id) {
+        return dirOf(id);
+    }
+
+    /**
+     * Registers a timeline whose files were copied into place (an imported incident bundle): reads its header and summary, adds it to the
+     * catalogue and writes its derived index. The caller has validated the files; the log itself is validated again when it is read.
+     */
+    public synchronized void adopt(String id) {
+        TimelineHeader h = header(id);
+        TimelineSummary sum = summary(id);
+        if (sum == null) throw new IllegalStateException("timeline " + id + " has no summary: only finished timelines can be adopted");
+        ownCache.remove(id);
+        resolvedCache.clear();
+        own(id); // validates the log (commit lines, checksums, positions) before it is registered
+        updateCatalog(h, sum.status());
+        rebuildIndex(id);
+    }
+
     static void atomicWrite(Path target, String content) throws IOException {
         Path tmp = target.resolveSibling(target.getFileName() + ".tmp");
         Files.writeString(tmp, content, StandardCharsets.UTF_8);

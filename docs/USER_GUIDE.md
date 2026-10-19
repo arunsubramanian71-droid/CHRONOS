@@ -80,6 +80,29 @@ chronos campaign tutorial --seeds 1-200 --chaos --keep # random fault plans over
 chronos inject T0 --fault crash:receiver:120           # add a fault to a recorded run
 ```
 
+## 6b. Explore fault schedules systematically, and hand an incident to someone else
+
+Random campaigns find failures; they cannot say what was *not* covered. `explore` enumerates **every** subset of at most K candidate
+faults, in one fixed order, runs the scenario under each and checks the invariants:
+
+```bash
+chronos explore re --param partition=off --max-faults 2 --times 100,300 --kinds crash,partition,pause --save
+chronos explore re --param partition=off --candidate partition:300:400:p\|b --candidate pause:client:150:20 --max-faults 2   # your own candidates
+```
+
+The report states the space (candidates, subsets), what was executed, which executions were recognised as identical traces (a fault that
+never fires changes nothing) and which schedules were skipped because they contain an already violating one (minimal counterexamples), how it
+ended (`EXHAUSTED`, `CASE_LIMIT`, `FIRST_VIOLATION`) and, if it stopped early, how much of the bound was **not** explored. "No violation" always
+means "none within this bound, with this seed and horizon". `--save` records each violating schedule as a normal timeline plus a checksummed
+document in `counterexamples/`; `chronos counterexample FILE` re-executes it from the document alone and checks the same violation appears.
+
+To give a failure to someone else, bundle it: `chronos incident export T0 --out t0.chronos-incident` writes one checksummed file (the
+timeline and its ancestors, the fault plan and interventions, the violation, the causal evidence, versions and reproduction steps). On the
+other machine: `chronos --data DIR incident info FILE` validates it without writing anything, `incident reproduce FILE` re-executes the
+application and checks the same trace and violation, `incident import FILE` adds it to a store for `inspect`, `why` and `compare`. A damaged,
+forged or unsupported bundle is rejected with a reason and nothing is written. Reproduction needs the same application (scenario) on the
+receiving side; without it the bundle can still be inspected, because the log is the source of truth.
+
 ## 7. Write your own application
 
 An application is a set of `Node` classes plus a `Scenario` (nodes, workload, fault plan, invariants). Read `Tutorial.java`; the rules are:

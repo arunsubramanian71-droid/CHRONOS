@@ -91,4 +91,42 @@ class ViewerTest {
         assertEquals(0, code, err.toString());
         assertTrue(out.toString().contains("live viewer (read-only) on http://127.0.0.1:"), out.toString());
     }
+
+    @Test
+    void theCausalEvidenceEndpointSeparatesCertainFromPotentialLinksAndLargeTimelinesAreTruncatedHonestly() throws Exception {
+        Env env = new Env(tmp.resolve("ev"));
+        env.record("re", 42, Map.of(), null, Boolean.FALSE);
+        env.record("gossip", 3, Map.of("nodes", "5", "horizon", "4000"), null, Boolean.FALSE); // well over 5,000 events
+        try (Viewer v = new Viewer(env.store, "127.0.0.1", 0)) {
+            v.start();
+            Map<String, Object> past = Canon.map(Canon.parse(get(v, "/api/timeline/T0/past/inv:single-primary%231").body()));
+            List<Object> chains = Canon.list(past.get("chains"));
+            assertFalse(chains.isEmpty());
+            boolean sawPotential = false, sawCertain = false;
+            for (Object ch : chains)
+                for (Object hop : Canon.list(ch)) {
+                    Map<String, Object> h = Canon.map(hop);
+                    if (!h.containsKey("edgeToNext")) continue;
+                    boolean certain = Boolean.TRUE.equals(h.get("certain"));
+                    assertEquals(!"OMISSION".equals(h.get("edgeToNext")), certain, "only OMISSION edges are potential: " + h);
+                    sawPotential |= !certain;
+                    sawCertain |= certain;
+                }
+            assertTrue(sawPotential && sawCertain, "the flagship chain has both a potential OMISSION link and certain ones");
+            assertTrue(Canon.list(past.get("past")).size() > 10);
+            assertEquals(400, get(v, "/api/timeline/T0/past/nope%231").statusCode());
+            // a timeline over the display limit
+            long total = env.events("T1").size();
+            assertTrue(total > 5000, "events: " + total);
+            Map<String, Object> ev = Canon.map(Canon.parse(get(v, "/api/timeline/T1/events").body()));
+            assertEquals(total, Canon.num(ev.get("total")));
+            assertEquals(Boolean.TRUE, ev.get("truncated"));
+            assertEquals(5000, Canon.list(ev.get("events")).size());
+            // the rest of the timeline is still reachable: the world at the very last position, and the causal evidence of an event beyond the limit
+            assertEquals(200, get(v, "/api/timeline/T1/at/" + (total - 1)).statusCode());
+            Event beyond = env.events("T1").get((int) total - 1);
+            assertEquals(200, get(v, "/api/timeline/T1/past/" + java.net.URLEncoder.encode(beyond.eventId(), java.nio.charset.StandardCharsets.UTF_8)).statusCode());
+            assertEquals(400, get(v, "/api/timeline/T1/at/" + total).statusCode());
+        }
+    }
 }
