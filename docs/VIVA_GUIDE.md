@@ -90,7 +90,7 @@ orders roots by virtual time, node order (env last) and event id, and never comp
 * *Did the tests find real bugs?* Yes, four: the chaos soak found a duplicate-identity collision for repeated duplicates and a verifier
   false mismatch on trailing silent steps (`docs/DEVIATIONS.md` DEV-12, DEV-13); testing replay from every checkpoint found that a
   checkpoint did not remember its run had stopped (DEV-21); the comparator tests led to the path tie-break rule (DEV-09).
-* *Does `why` always name the fault?* No, and the evaluation shows it: a fault is linked only to timers that noticed its silence, so a failure caused by a message that never arrived and that nothing was waiting for has no fault in its causal past (the tutorial case: `why` 0/100, `causes` 100/100 on randomised cases). Explanation says what happened; counterfactuals say what was necessary (`docs/EVALUATION.md`).
+* *Does `why` always name the fault?* No, and the evaluation shows it: a fault is linked only to timers that noticed its silence, so a failure caused by a message that never arrived and that nothing was waiting for has no fault in its causal past (the tutorial case: chains 0/100, `causes` 100/100 on randomised cases). `why` therefore also prints a labelled "possible silence" hint (98-100/100 with it). Explanation says what happened; counterfactuals say what was necessary (`docs/EVALUATION.md`).
 * *How do you know the explanations are right on bugs you did not plant?* `docs/EVALUATION.md`: 800 chaos runs, 100 failures, a root fault
   named in 94, and for 73 of them removing exactly that fault by a real counterfactual made the failure disappear; and what that does
   not show (it is not blind).

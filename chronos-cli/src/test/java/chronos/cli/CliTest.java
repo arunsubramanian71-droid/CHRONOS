@@ -3,6 +3,7 @@ package chronos.cli;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import chronos.analysis.*;
 import chronos.model.*;
 import java.io.*;
 import java.util.Map;
@@ -239,6 +240,25 @@ class CliTest {
         R br = cli("inject", "T1.1", "--fault", "crash:b:100");
         assertEquals(1, br.code());
         assertTrue(br.err().contains("is a branch"), br.err());
+    }
+
+    @Test
+    void whyNamesTheFaultBehindASilenceNoTimerNoticed() {
+        cli("run", "tutorial", "--fault", "partition:100:200:sender|receiver", "--no-stop");
+        R w = cli("inspect", "T0", "--goto", "violation", "--why");
+        assertTrue(w.out().contains("possible silence") && w.out().contains("by fault:f1-partition#1 rule f1-partition"), w.out());
+        TimeTravelSession s = new TimeTravelSession(new chronos.store.TimelineStore(tmp.resolve("data")), "T0");
+        s.goToViolation();
+        List<TimeTravelSession.Silence> si = s.silence(s.cursor());
+        assertFalse(si.isEmpty());
+        assertTrue(si.stream().allMatch(x -> x.node().equals("receiver") && "f1-partition".equals(x.faultRule())), si.toString());
+        // the chain itself does not contain the fault: that is the point of the hint
+        assertTrue(s.whyChains(s.cursor()).stream().noneMatch(ch -> s.graph().event(ch.get(0)).kind() == EventKind.FAULT_INJECTED));
+        // a violation that a timer noticed keeps its certain chain, and a run without a violation has no silence section
+        cli("run", "re", "--no-stop");
+        assertTrue(cli("inspect", "T1", "--goto", "violation", "--why").out().contains("chain from fault:partition-pb#1"));
+        cli("run", "tutorial");
+        assertFalse(cli("inspect", "T2", "--why").out().contains("possible silence"));
     }
 
     @Test

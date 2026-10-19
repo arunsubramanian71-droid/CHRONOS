@@ -50,32 +50,37 @@ Samples from the output: seed 5 (RE) root `fault:c1-partition#1`, removal makes 
 
 The kit behind the blind protocol (`docs/BLIND_PROTOCOL.md`) builds cases from a token: five kinds of planted cause with randomised
 rule names, times and delays, under the neutral scenario name `mystery`. CHRONOS is given only the recording (not the plan) and asked
-two questions: which fault rules do the causal chains of the violation start from (`why`), and what is the minimal set of fault rules
-whose removal makes the failure disappear, found by real counterfactual branches (`causes`)? Score: exact match with the planted set.
-500 tokens, 100 of each kind (`eval --tokens 500`, mean diagnosis time 4.7 ms).
+three questions: which fault rules do the certain causal chains of the violation start from (`why`); which fault rules does `why`
+name once its *possible silence* section is added; and what is the minimal set of fault rules whose removal makes the failure
+disappear, found by real counterfactual branches (`causes`)? Score: exact match with the planted set. 500 tokens, 100 of each kind
+(`eval --tokens 500`, mean diagnosis time 4.6 ms; raw output in `evaluation-output.txt`).
 
-| Kind of planted cause | `why`: chain sources = planted set | `causes`: minimal critical set = planted set |
-|---|---|---|
-| split brain: a partition longer than a watchdog | 100 / 100 | 100 / 100 |
-| lost update: a replication message delayed past its successor | 100 / 100 | 100 / 100 |
-| blocked commit: a coordinator crash between prepare and decision | 100 / 100 | 100 / 100 |
-| overdetermined: two independent partitions, each sufficient | **0 / 100** | 100 / 100 |
-| a partition between a sender and a receiver (the tutorial) | **0 / 100** | 100 / 100 |
-| **all** | **300 / 500** | **500 / 500** |
+| Kind of planted cause | `why`: chain sources | `why` + possible silence | `causes`: minimal critical set |
+|---|---|---|---|
+| split brain: a partition longer than a watchdog | 100 / 100 | 100 / 100 | 100 / 100 |
+| lost update: a replication message delayed past its successor | 100 / 100 | 100 / 100 | 100 / 100 |
+| blocked commit: a coordinator crash between prepare and decision | 100 / 100 | 100 / 100 | 100 / 100 |
+| overdetermined: two independent partitions, each sufficient | **0 / 100** | 98 / 100 | 100 / 100 |
+| a partition between a sender and a receiver (the tutorial) | **0 / 100** | 100 / 100 | 100 / 100 |
+| **all** | **300 / 500** | **498 / 500** | **500 / 500** |
 
-What the failures of `why` mean (both are limits of the *method*, found by this experiment, and both are consistent with the
-specification's own rules):
+What the 0 / 100 cells of the first column meant, and what was done about it (both are limits of the *method*, found by running this
+experiment, and consistent with the specification's own rules):
 
 * **Silence with no timer leaves no trace.** In the tutorial case the receiver simply never gets two ticks, and nothing in the system
   waits for them with a timer, so no OMISSION edge exists (D-23 links a fault only to a *timer firing* that noticed the silence). The
-  partition is not in the causal past of the violation at all, so `why` cannot name it; the counterfactual search finds it every time.
-  This is why the tool has `branch`, `search` and `causes` as well as `why`, and the user guide says so.
+  partition is not in the causal past of the violation at all, so the certain chains cannot name it. After seeing this the `why`
+  output gained a clearly labelled **possible silence** section (`TimeTravelSession.silence`): for each node the invariant read, the
+  messages dropped on their way to it after the last write the violation depends on, with the fault that dropped each. It adds no edge and
+  claims nothing certain. The second column is the result with it (the hint was designed after the first run of the experiment, so
+  this column is not an independent test of it).
 * **An overdetermined failure has more than one cause, but a violation event has one story.** The *first* violation is already
   explained by one partition (its chain is exact for that event); that the failure would have happened anyway through the other
-  partition is only visible by experiment (KA-4: `FAILURE_PERSISTS` for each removal alone).
+  partition is only visible by experiment (KA-4: `FAILURE_PERSISTS` for each removal alone). The hint recovers 98 of 100; in the other two
+  the second partition dropped nothing addressed to a node the invariant read before the violation.
 
-So the right reading is: `why` is a precise explanation of *what happened*; `causes` is the test of *what was necessary*; neither
-replaces the other, and the second is what reached 500 / 500 here.
+So the right reading is: `why` is a precise explanation of *what happened*, the silence hint is a lead, and `causes` is the test of
+*what was necessary*, which reached 500 / 500 here without any hint.
 
 ## Limits of this evaluation (honest)
 

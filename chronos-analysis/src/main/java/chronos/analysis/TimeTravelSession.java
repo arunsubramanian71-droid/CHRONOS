@@ -379,7 +379,66 @@ public final class TimeTravelSession {
             sb.append("  chain from ").append(src.eventId()).append(" (").append(sourceLabel(src)).append("):\n");
             sb.append(renderChain(chain, "    "));
         }
+        List<Silence> silence = silence(e);
+        if (!silence.isEmpty()) {
+            sb.append("  possible silence (potential, not certain: messages that never reached a node this invariant read, after the last write the violation depends on):\n");
+            int shown = 0;
+            for (Silence si : silence) {
+                if (shown++ >= 8) {
+                    sb.append("    ... and ").append(silence.size() - 8).append(" more\n");
+                    break;
+                }
+                sb.append("    to ").append(si.node()).append(si.afterEventId() == null ? " (it never wrote the field)" : " (after " + si.afterEventId() + ")").append(": ").append(si.messageId())
+                        .append(" dropped (").append(si.dropEventId()).append(si.faultEventId() == null ? ", no fault: the node was down" : ", by " + si.faultEventId() + " rule " + si.faultRule()).append(")\n");
+            }
+        }
         return sb.toString();
+    }
+
+    /** A message that never reached a node an invariant read, with the fault (if any) that dropped it. */
+    public record Silence(String node, String afterEventId, String dropEventId, String messageId, String faultEventId, String faultRule) {}
+
+    /**
+     * Possible silence behind an invariant violation. A message that never arrives leaves no event in the causal past of what depends on
+     * its absence, unless a timer noticed it (D-23), so `why` alone cannot always name the fault that caused it. For a violation this
+     * lists, for every node the invariant read, the messages dropped on their way to it after the last write the violation depends on,
+     * and the fault that dropped each. It is a hint in the spirit of an OMISSION edge: potential, never certain, and it adds no edge.
+     */
+    public List<Silence> silence(int violation) {
+        Event v = events.get(violation);
+        if (v.kind() != EventKind.INVARIANT_VIOLATED) return List.of();
+        Set<String> readNodes = new TreeSet<>();
+        for (Object f : Canon.list(v.payload().get("fields"))) {
+            String field = (String) f;
+            int dot = field.indexOf('.');
+            if (dot > 0) readNodes.add(field.substring(0, dot));
+        }
+        List<Silence> out = new ArrayList<>();
+        for (String node : readNodes) {
+            int lastWrite = -1;
+            for (Object w : Canon.list(v.payload().get("witnesses"))) {
+                int p = graph.pos((String) w);
+                if (p >= 0 && events.get(p).nodeId().equals(node) && p > lastWrite) lastWrite = p;
+            }
+            String after = lastWrite >= 0 ? events.get(lastWrite).eventId() : null;
+            for (int i = Math.max(0, lastWrite + 1); i < violation; i++) {
+                Event d = events.get(i);
+                if (d.kind() != EventKind.MESSAGE_DROPPED) continue;
+                int sendPos = graph.pos((String) d.payload().get("messageId"));
+                if (sendPos < 0 || !node.equals(events.get(sendPos).payload().get("to"))) continue; // only real messages addressed to this node
+                String faultId = null, rule = null;
+                for (Parent par : d.parents()) {
+                    if (par.kind() != EdgeKind.FAULT) continue;
+                    int fp = graph.pos(par.id());
+                    if (fp >= 0 && events.get(fp).kind() == EventKind.FAULT_INJECTED) {
+                        faultId = par.id();
+                        rule = (String) events.get(fp).payload().get("rule");
+                    }
+                }
+                out.add(new Silence(node, after, d.eventId(), (String) d.payload().get("messageId"), faultId, rule));
+            }
+        }
+        return out;
     }
 
     /** One shortest chain (certain + OMISSION edges only) from each source to the event; faults and interventions first. */

@@ -827,7 +827,7 @@ public final class BenchMain {
      */
     private static void evaluatePlanted(int tokens) throws IOException {
         BlindKit.Registry reg = new BlindKit.Registry();
-        Map<Integer, int[]> byKind = new TreeMap<>(); // kind -> {runs, whyExact, searchExact, butForConfirmed}
+        Map<Integer, int[]> byKind = new TreeMap<>(); // kind -> {runs, whyExact, searchExact, butForConfirmed, whyPlusSilenceExact}
         long nanos = 0;
         for (long token = 1; token <= tokens; token++) {
             BlindKit.Case c = BlindKit.caseFor(token);
@@ -842,32 +842,35 @@ public final class BenchMain {
                 List<Event> ev = store.events("T0");
                 TimeTravelSession s = new TimeTravelSession(store, "T0");
                 s.goToViolation();
-                Set<String> why = new TreeSet<>();
+                Set<String> why = new TreeSet<>(), whySilence = new TreeSet<>();
+                for (TimeTravelSession.Silence si : s.silence(s.cursor())) if (si.faultRule() != null) whySilence.add(si.faultRule());
                 for (List<Integer> chain : s.whyChains(s.cursor())) {
                     Event src = ev.get(chain.get(0));
                     if (src.kind() == EventKind.FAULT_INJECTED && src.payload().get("rule") != null) why.add((String) src.payload().get("rule"));
                 }
+                whySilence.addAll(why);
                 CounterfactualEngine.CauseSearch cs = new CounterfactualEngine(mgr).findCriticalFaultSets("T0", 2, 4);
                 Set<String> search = cs.minimalCriticalSets().isEmpty() ? Set.of() : cs.minimalCriticalSets().get(0);
                 nanos += System.nanoTime() - t0;
-                int[] t = byKind.computeIfAbsent((int) (token % BlindKit.CASES), k -> new int[4]);
+                int[] t = byKind.computeIfAbsent((int) (token % BlindKit.CASES), k -> new int[5]);
                 t[0]++;
                 if (why.equals(c.truth())) t[1]++;
                 if (search.equals(c.truth())) t[2]++;
                 if (!cs.minimalCriticalSets().isEmpty()) t[3]++;
+                if (whySilence.equals(c.truth())) t[4]++;
             } finally {
                 deleteTree(d);
             }
         }
         String[] names = {"split brain (partition)", "lost update (delay)", "blocked commit (crash)", "overdetermined (two partitions)", "sender/receiver partition"};
-        int[] all = new int[4];
+        int[] all = new int[5];
         for (Map.Entry<Integer, int[]> e : byKind.entrySet()) {
             int[] t = e.getValue();
-            for (int i = 0; i < 4; i++) all[i] += t[i];
+            for (int i = 0; i < 5; i++) all[i] += t[i];
             row("EVAL-PLANTED", "Randomised planted causes diagnosed from the recording alone", names[e.getKey()], "exact match with the planted set", t[1] + "/" + t[0], "", "", "cases",
-                    "`why` chain sources: " + t[1] + "/" + t[0] + "; minimal critical set from `causes`: " + t[2] + "/" + t[0]);
+                    "`why` chain sources: " + t[1] + "/" + t[0] + "; `why` plus possible silence: " + t[4] + "/" + t[0] + "; minimal critical set from `causes`: " + t[2] + "/" + t[0]);
         }
         row("EVAL-PLANTED", "Randomised planted causes diagnosed from the recording alone", "all " + tokens + " tokens", "exact match with the planted set", all[1] + "/" + all[0], "", "", "cases",
-                "`why` " + all[1] + "/" + all[0] + ", `causes` " + all[2] + "/" + all[0] + "; mean diagnosis time " + fmt(nanos / 1e6 / tokens) + " ms; NOT blind: see docs/BLIND_PROTOCOL.md");
+                "`why` " + all[1] + "/" + all[0] + ", `why` + silence " + all[4] + "/" + all[0] + ", `causes` " + all[2] + "/" + all[0] + "; mean diagnosis time " + fmt(nanos / 1e6 / tokens) + " ms; NOT blind: see docs/BLIND_PROTOCOL.md");
     }
 }
