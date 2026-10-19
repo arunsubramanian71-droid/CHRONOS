@@ -30,99 +30,103 @@ java -jar chronos-bench/target/chronos-bench.jar eval --seeds 400               
 | NFR | Target | Measured | Verdict |
 |---|---|---|---|
 | NFR-01 | byte-identical logs, 100% over 1,000 seeded runs of each demo | **16 scenario/plan combinations x 1000 seeds = 16,000 pairs, all identical** (each seed run twice on different thread counts); also identical across fresh JVMs and on Linux | **met** |
-| NFR-05 | >= 50,000 events/s in memory | 355,471 events/s (recorder off: 397,251) | **met** |
-| NFR-05 | >= 20,000 events/s persisted | 339,868 events/s through the real asynchronous store, checkpoints included (synchronous disk: 192,992); 289331 events/s for a 1,017,092-event, 20-node timeline | **met** |
-| NFR-06 | seek < 1 s at 100,000 events | worst of 100 jumps including `world()`: 0.420 ms median / 0.482 ms p99 at 100,733 events; opening the session 25.6 ms | **met** |
-| NFR-06 | seek < 5 s at 1,000,000 events | worst of 100 jumps: 1.276 ms at 1,018,235 events / 10 nodes (session open 280.2 ms), 1.409 ms at 1,017,092 events / 20 nodes, 15.2 ms on a timeline read back from disk. Opening a persisted million-event timeline first parses the log: 3686 ms (not part of a jump) | **met** |
-| NFR-07 | replay within 2x of the original | 1.30x at 10,085 events, 1.15x at 100,733 events, 1.08x at 1,018,235 events (10 nodes), 1.05x at 1,017,092 events (20 nodes), 1.14x against the persisted recording of the 20-node timeline | **met at every size measured** |
-| NFR-08 | branch cost independent of prefix length | branch creation 23-44 ms at prefixes of 10k, 50k and 90k events of a 100,733-event timeline; the branch stores ~80 KiB against the parent's 30,250 KiB | **met** |
+| NFR-05 | >= 50,000 events/s in memory | 367,767 events/s (recorder off: 401,995) | **met** |
+| NFR-05 | >= 20,000 events/s persisted | 326,922 events/s through the real asynchronous store, checkpoints included (synchronous disk: 188,266); 290442 events/s for a 1,017,092-event, 20-node timeline | **met** |
+| NFR-06 | seek < 1 s at 100,000 events | worst of 100 jumps including `world()`: 0.594 ms median / 0.643 ms p99 at 100,733 events; opening the session 24.4 ms | **met** |
+| NFR-06 | seek < 5 s at 1,000,000 events | worst of 100 jumps: 1.271 ms at 1,018,235 events / 10 nodes (session open 286.1 ms), 1.243 ms at 1,017,092 events / 20 nodes, 14.9 ms on a timeline read back from disk. Opening a persisted million-event timeline first parses the log: 3465 ms (not part of a jump) | **met** |
+| NFR-07 | replay within 2x of the original | 1.42x at 10,085 events, 1.10x at 100,733 events, 1.05x at 1,018,235 events (10 nodes), 1.04x at 1,017,092 events (20 nodes), 1.18x against the persisted recording of the 20-node timeline | **met at every size measured** |
+| NFR-08 | branch cost independent of prefix length | branch creation 26-30 ms at prefixes of 10k, 50k and 90k events of a 100,733-event timeline; the branch stores ~80 KiB against the parent's 30,250 KiB | **met** |
 | NFR-09 | 3-20 nodes, ~1,000,000 events | 1,018,235 events at 10 nodes **and** 1,017,092 events at 20 nodes (the top of the envelope): each recorded in memory, graph-built, sought in and replay-verified; the 20-node timeline also persisted to disk by the real store, read back in a fresh store and replay-verified | **met** |
-| NFR-10 | measure and report bytes per event | 275 bytes/event with state records (265 without) on the 5-node run; in memory ~912 bytes/event at 10 nodes, ~1165 at 20; on disk 401 bytes/event at 20 nodes (vectors grow with the node count); gzip compression (opt-in) 67 bytes/event on the 5-node run | measured and reported; the initial expectation (< 300 bytes without states) holds for the 5-node run and is exceeded at 20 nodes, which the specification allows (no pass-or-fail target) |
+| NFR-10 | measure and report bytes per event | 275 bytes/event with state records (265 without) on the 5-node run; in memory ~913 bytes/event at 10 nodes, ~1165 at 20; on disk 401 bytes/event at 20 nodes (vectors grow with the node count); gzip compression (opt-in) 67 bytes/event on the 5-node run | measured and reported; the initial expectation (< 300 bytes without states) holds for the 5-node run and is exceeded at 20 nodes, which the specification allows (no pass-or-fail target) |
 
 ## Harness results (JDK 21)
 
 | ID | Variant | Metric | median / p95 / p99 | Note |
 |---|---|---|---|---|
-| B1 | gossip nodes=3 ~100000 events | steps/s | 121179 / 123538 / 123538 steps/s | baseline only |
-| B1 | gossip nodes=5 ~100000 events | steps/s | 124556 / 125578 / 125578 steps/s | baseline only |
-| B1 | gossip nodes=10 ~100000 events | steps/s | 121273 / 122239 / 122239 steps/s | baseline only |
-| B2 | recorder off (null sink) | events/s | 397251 / 400365 / 400365 events/s | target NFR-05: >= 50,000 in memory |
-| B2 | in memory | events/s | 355471 / 378140 / 378140 events/s | meets NFR-05 (>= 50,000/s); overhead x1.118 |
-| B2 | synchronous disk | events/s | 192992 / 195647 / 195647 events/s | overhead x2.058 |
-| B2 | asynchronous disk (the real store) | events/s | 339868 / 344219 / 344219 events/s | meets NFR-05 (>= 20,000/s persisted, incl. checkpoints); overhead x1.169 |
-| B3 | nodes=3 | ns per receive | 71.9 / 85.1 / 85.1 ns/op | event line 125 bytes; informs compression |
-| B3 | nodes=10 | ns per receive | 103.2 / 111.1 / 111.1 ns/op | event line 139 bytes; informs compression |
-| B3 | nodes=20 | ns per receive | 96.5 / 101.1 / 101.1 ns/op | event line 158 bytes; informs compression |
-| B3 | nodes=50 | ns per receive | 215.8 / 223.4 / 223.4 ns/op | event line 218 bytes; informs compression |
-| B3 | nodes=100 | ns per receive | 428.5 / 436.3 / 436.3 ns/op | event line 318 bytes; informs compression |
-| B4 | 100733 events, 23% carry a state record | microseconds/event | 1.282 / 1.791 / 1.791 us/event | bytes/event 275 |
+| B1 | gossip nodes=3 ~100000 events | steps/s | 122478 / 124374 / 124374 steps/s | baseline only |
+| B1 | gossip nodes=5 ~100000 events | steps/s | 123455 / 126151 / 126151 steps/s | baseline only |
+| B1 | gossip nodes=10 ~100000 events | steps/s | 121205 / 122932 / 122932 steps/s | baseline only |
+| B2 | recorder off (null sink) | events/s | 401995 / 402796 / 402796 events/s | target NFR-05: >= 50,000 in memory |
+| B2 | in memory | events/s | 367767 / 372189 / 372189 events/s | meets NFR-05 (>= 50,000/s); overhead x1.093 |
+| B2 | synchronous disk | events/s | 188266 / 197864 / 197864 events/s | overhead x2.135 |
+| B2 | asynchronous disk (the real store) | events/s | 326922 / 330437 / 330437 events/s | meets NFR-05 (>= 20,000/s persisted, incl. checkpoints); overhead x1.230 |
+| B3 | nodes=3 | ns per receive | 70.4 / 83.1 / 83.1 ns/op | event line 125 bytes; informs compression |
+| B3 | nodes=10 | ns per receive | 104.1 / 106.9 / 106.9 ns/op | event line 139 bytes; informs compression |
+| B3 | nodes=20 | ns per receive | 95.5 / 102.4 / 102.4 ns/op | event line 158 bytes; informs compression |
+| B3 | nodes=50 | ns per receive | 216.6 / 230.4 / 230.4 ns/op | event line 218 bytes; informs compression |
+| B3 | nodes=100 | ns per receive | 428.4 / 435.7 / 435.7 ns/op | event line 318 bytes; informs compression |
+| B4 | 100733 events, 23% carry a state record | microseconds/event | 1.250 / 1.270 / 1.270 us/event | bytes/event 275 |
 | B12 | with full state records | bytes/event | 275 bytes | 275 MB per million events (NFR-10: measured and reported, initial expectation < 300 bytes without states) |
 | B12 | digests only, no state records | bytes/event | 265 bytes |  |
-| B5 | 10085 events | build | 1.448 / 1.699 / 1.699 ms | 20160 edges (1.999 per event) |
-| B5 | 10085 events | happens-before | 296.2 / 374.0 / 374.0 ns/query | vector clocks, cost ~ node count |
-| B5 | 10085 events | causal past (last) | 0.274 / 0.290 / 0.290 ms/query | walks parents backwards |
-| B6 | 10085 events | worst of 100 jumps + world | 0.423 / 0.943 / 0.943 ms | meets NFR-06 (<1000 ms); opening the session (graph + indexes): 2.861 ms |
-| B5 | 100733 events | build | 13.8 / 14.4 / 14.4 ms | 201456 edges (2.000 per event) |
-| B5 | 100733 events | happens-before | 361.3 / 378.0 / 378.0 ns/query | vector clocks, cost ~ node count |
-| B5 | 100733 events | causal past (last) | 1.904 / 1.953 / 1.953 ms/query | walks parents backwards |
-| B6 | 100733 events | worst of 100 jumps + world | 0.420 / 0.482 / 0.482 ms | meets NFR-06 (<1000 ms); opening the session (graph + indexes): 25.6 ms |
-| B7 | 10085 events | replay time | 34.2 / 44.6 / 44.6 ms | ratio to recording x1.301 meets NFR-07 (<= 2x); verified=true |
-| B7 | 100733 events | replay time | 308.4 / 342.0 / 342.0 ms | ratio to recording x1.151 meets NFR-07 (<= 2x); verified=true |
-| B6b | 100733 events | parse the log from disk | 263.3 / 270.6 / 270.6 ms | 305.0 bytes/event on disk |
-| B6b | 100733 events | load persisted indexes | 1.838 / 2.200 / 2.200 ms | 205591 bytes (2.041 bytes/event) |
-| B6b | 100733 events | rebuild indexes from the log | 4.823 / 5.921 / 5.921 ms | the fallback when an index file is missing or suspect |
-| B12 | gzip-compressed segments (opt-in --compress) | bytes/event | 67 bytes | x4.492 smaller than the plain log; recording takes x3.685 of the plain time (296.4 ms plain, 1092 ms compressed) |
-| B6b | 100733 events | parse the compressed log from disk | 335.7 / 344.6 / 344.6 ms | x1.275 of the plain parse time |
-| B8 | prefix 10071 of 100733 events | branch creation | 39.5 / 41.9 / 41.9 ms | branch stores 79.0283203125 KiB vs parent 30459 KiB (a full copy would be >= 3045 KiB) |
-| B8 | prefix 50362 of 100733 events | branch creation | 44.3 / 47.8 / 47.8 ms | branch stores 81.7021484375 KiB vs parent 30459 KiB (a full copy would be >= 15228 KiB) |
-| B8 | prefix 90659 of 100733 events | branch creation | 22.7 / 25.4 / 25.4 ms | branch stores 85.6005859375 KiB vs parent 30459 KiB (a full copy would be >= 27413 KiB) |
-| B10 | 100733 events, branch at 98 | compare | 638.7 / 723.3 / 723.3 ms | linear in events after indexing |
-| B9 | 1 thread(s), 48 runs | runs/s | 313.6 / 315.2 / 315.2 runs/s | speedup x1.000 (reports are identical for every thread count, law M12) |
-| B9 | 2 thread(s), 48 runs | runs/s | 535.3 / 544.6 / 544.6 runs/s | speedup x1.707 (reports are identical for every thread count, law M12) |
-| B9 | 4 thread(s), 48 runs | runs/s | 908.5 / 927.2 / 927.2 runs/s | speedup x2.897 (reports are identical for every thread count, law M12) |
-| B9 | 8 thread(s), 48 runs | runs/s | 1020 / 1023 / 1023 runs/s | speedup x3.252 (reports are identical for every thread count, law M12) |
-| B11 | RE, 48 events, 1 thread(s) | search time | 44.8 / 61.3 / 61.3 ms | 12 real counterfactual branches tried, 1 critical |
-| B11 | RE, 48 events, 4 thread(s) | search time | 26.4 / 28.0 / 28.0 ms | 12 real counterfactual branches tried, 1 critical |
-| B11 | lost update, 19 events, 1 thread(s) | search time | 31.6 / 34.3 / 34.3 ms | 9 real counterfactual branches tried, 9 critical |
-| B11 | lost update, 19 events, 4 thread(s) | search time | 20.4 / 21.6 / 21.6 ms | 9 real counterfactual branches tried, 9 critical |
-| B13 | simulated 0 us per step group | events/s | 247913 events/s | queue high-water 256 of 256 groups (bounded: the engine waits instead of growing memory); all 20169 events persisted and readable: true |
-| B13 | simulated 100 us per step group | events/s | 18430 events/s | queue high-water 256 of 256 groups (bounded: the engine waits instead of growing memory); all 20169 events persisted and readable: true |
-| B13 | simulated 500 us per step group | events/s | 3800 events/s | queue high-water 256 of 256 groups (bounded: the engine waits instead of growing memory); all 20169 events persisted and readable: true |
-| B13 | simulated 2000 us per step group | events/s | 1036 events/s | queue high-water 256 of 256 groups (bounded: the engine waits instead of growing memory); all 20169 events persisted and readable: true |
-| XL | 1018235 events, 10 nodes | record time | 3412 ms | 298443 events/s |
-| XL | 1018235 events, 10 nodes, held in memory | heap used | 886 MiB | 912 bytes per event (events + checkpoints + indexes of the log) |
-| XL | 1018235 events, 10 nodes | graph build | 197.8 ms | 2036450 edges |
-| XL | 1018235 events, 10 nodes | worst of 100 jumps | 1.276 ms | meets NFR-06 (< 5000 ms); session open 280.2 ms |
-| XL | 1018235 events, 10 nodes | replay time | 3683 ms | verified=true, ratio to recording x1.080 meets NFR-07 (<= 2x) |
-| XL | 1017092 events, 20 nodes | record time | 3725 ms | 273014 events/s |
+| B5 | 10085 events | build | 1.477 / 1.666 / 1.666 ms | 20160 edges (1.999 per event) |
+| B5 | 10085 events | happens-before | 288.7 / 361.9 / 361.9 ns/query | vector clocks, cost ~ node count |
+| B5 | 10085 events | causal past (last) | 0.191 / 0.290 / 0.290 ms/query | walks parents backwards |
+| B6 | 10085 events | worst of 100 jumps + world | 0.448 / 1.035 / 1.035 ms | meets NFR-06 (<1000 ms); opening the session (graph + indexes): 2.979 ms |
+| B5 | 100733 events | build | 15.0 / 15.7 / 15.7 ms | 201456 edges (2.000 per event) |
+| B5 | 100733 events | happens-before | 377.8 / 391.6 / 391.6 ns/query | vector clocks, cost ~ node count |
+| B5 | 100733 events | causal past (last) | 2.059 / 2.807 / 2.807 ms/query | walks parents backwards |
+| B6 | 100733 events | worst of 100 jumps + world | 0.594 / 0.643 / 0.643 ms | meets NFR-06 (<1000 ms); opening the session (graph + indexes): 24.4 ms |
+| B7 | 10085 events | replay time | 37.2 / 45.3 / 45.3 ms | ratio to recording x1.418 meets NFR-07 (<= 2x); verified=true |
+| B7 | 100733 events | replay time | 304.6 / 311.4 / 311.4 ms | ratio to recording x1.099 meets NFR-07 (<= 2x); verified=true |
+| B6b | 100733 events | parse the log from disk | 260.0 / 280.7 / 280.7 ms | 305.0 bytes/event on disk |
+| B6b | 100733 events | load persisted indexes | 1.696 / 2.095 / 2.095 ms | 205591 bytes (2.041 bytes/event) |
+| B6b | 100733 events | rebuild indexes from the log | 5.005 / 6.106 / 6.106 ms | the fallback when an index file is missing or suspect |
+| B12 | gzip-compressed segments (opt-in --compress) | bytes/event | 67 bytes | x4.492 smaller than the plain log; recording takes x3.729 of the plain time (293.6 ms plain, 1095 ms compressed) |
+| B6b | 100733 events | parse the compressed log from disk | 338.7 / 345.2 / 345.2 ms | x1.303 of the plain parse time |
+| B15 | RE, 34 candidates, <= 2 faults | full exploration | 222.2 / 240.4 / 240.4 ms | 531 schedules executed: 2389 schedules/s, each a complete deterministic run with invariant checks |
+| B16 | 100733 events | export | 626.3 / 665.8 / 665.8 ms | 5695 KiB (57.9 bytes/event compressed) |
+| B16 | 100733 events | validated import | 823.4 / 830.4 / 830.4 ms | every file checksum, the log's commit checksums, count, log hash and causal evidence recomputed |
+| B16 | 100733 events | reproduce (import, replay verify, fresh run) | 1441 / 1445 / 1445 ms |  |
+| B8 | prefix 10071 of 100733 events | branch creation | 25.9 / 27.8 / 27.8 ms | branch stores 79.0283203125 KiB vs parent 30459 KiB (a full copy would be >= 3045 KiB) |
+| B8 | prefix 50362 of 100733 events | branch creation | 29.8 / 32.2 / 32.2 ms | branch stores 81.7021484375 KiB vs parent 30459 KiB (a full copy would be >= 15228 KiB) |
+| B8 | prefix 90659 of 100733 events | branch creation | 27.1 / 39.2 / 39.2 ms | branch stores 85.6005859375 KiB vs parent 30459 KiB (a full copy would be >= 27413 KiB) |
+| B10 | 100733 events, branch at 98 | compare | 733.9 / 833.3 / 833.3 ms | linear in events after indexing |
+| B9 | 1 thread(s), 48 runs | runs/s | 308.3 / 322.9 / 322.9 runs/s | speedup x1.000 (reports are identical for every thread count, law M12) |
+| B9 | 2 thread(s), 48 runs | runs/s | 549.6 / 608.7 / 608.7 runs/s | speedup x1.782 (reports are identical for every thread count, law M12) |
+| B9 | 4 thread(s), 48 runs | runs/s | 918.3 / 931.7 / 931.7 runs/s | speedup x2.978 (reports are identical for every thread count, law M12) |
+| B9 | 8 thread(s), 48 runs | runs/s | 1110 / 1161 / 1161 runs/s | speedup x3.601 (reports are identical for every thread count, law M12) |
+| B11 | RE, 48 events, 1 thread(s) | search time | 44.6 / 49.5 / 49.5 ms | 12 real counterfactual branches tried, 1 critical |
+| B11 | RE, 48 events, 4 thread(s) | search time | 26.2 / 35.4 / 35.4 ms | 12 real counterfactual branches tried, 1 critical |
+| B11 | lost update, 19 events, 1 thread(s) | search time | 30.2 / 32.0 / 32.0 ms | 9 real counterfactual branches tried, 9 critical |
+| B11 | lost update, 19 events, 4 thread(s) | search time | 19.1 / 20.5 / 20.5 ms | 9 real counterfactual branches tried, 9 critical |
+| B13 | simulated 0 us per step group | events/s | 304641 events/s | queue high-water 229 of 256 groups (bounded: the engine waits instead of growing memory); all 20169 events persisted and readable: true |
+| B13 | simulated 100 us per step group | events/s | 18545 events/s | queue high-water 256 of 256 groups (bounded: the engine waits instead of growing memory); all 20169 events persisted and readable: true |
+| B13 | simulated 500 us per step group | events/s | 3743 events/s | queue high-water 256 of 256 groups (bounded: the engine waits instead of growing memory); all 20169 events persisted and readable: true |
+| B13 | simulated 2000 us per step group | events/s | 1037 events/s | queue high-water 256 of 256 groups (bounded: the engine waits instead of growing memory); all 20169 events persisted and readable: true |
+| XL | 1018235 events, 10 nodes | record time | 3380 ms | 301258 events/s |
+| XL | 1018235 events, 10 nodes, held in memory | heap used | 886 MiB | 913 bytes per event (events + checkpoints + indexes of the log) |
+| XL | 1018235 events, 10 nodes | graph build | 201.1 ms | 2036450 edges |
+| XL | 1018235 events, 10 nodes | worst of 100 jumps | 1.271 ms | meets NFR-06 (< 5000 ms); session open 286.1 ms |
+| XL | 1018235 events, 10 nodes | replay time | 3543 ms | verified=true, ratio to recording x1.048 meets NFR-07 (<= 2x) |
+| XL | 1017092 events, 20 nodes | record time | 3742 ms | 271829 events/s |
 | XL | 1017092 events, 20 nodes, held in memory | heap used | 1130 MiB | 1165 bytes per event (events + checkpoints + indexes of the log) |
-| XL | 1017092 events, 20 nodes | graph build | 227.4 ms | 2034144 edges |
-| XL | 1017092 events, 20 nodes | worst of 100 jumps | 1.409 ms | meets NFR-06 (< 5000 ms); session open 346.2 ms |
-| XL | 1017092 events, 20 nodes | replay time | 3928 ms | verified=true, ratio to recording x1.054 meets NFR-07 (<= 2x) |
-| XL | 1017092 events, 20 nodes, on disk | record + persist | 3515 ms | 289331 events/s meets NFR-05 (>= 20,000/s persisted) |
+| XL | 1017092 events, 20 nodes | graph build | 232.5 ms | 2034144 edges |
+| XL | 1017092 events, 20 nodes | worst of 100 jumps | 1.243 ms | meets NFR-06 (< 5000 ms); session open 308.7 ms |
+| XL | 1017092 events, 20 nodes | replay time | 3877 ms | verified=true, ratio to recording x1.036 meets NFR-07 (<= 2x) |
+| XL | 1017092 events, 20 nodes, on disk | record + persist | 3502 ms | 290442 events/s meets NFR-05 (>= 20,000/s persisted) |
 | XL | 1017092 events, 20 nodes, on disk | bytes per event | 401 bytes | log 389 MiB, whole timeline directory (checkpoints, indexes) 408 MiB |
-| XL | 1017092 events, 20 nodes | parse the log | 3686 ms | indexes persisted in 16.7 ms |
-| XL | 1017092 events, 20 nodes | worst of 100 jumps | 15.2 ms | meets NFR-06 (< 5000 ms); session open 321.4 ms (the log was already parsed) |
-| XL | 1017092 events, 20 nodes | replay time | 3993 ms | verified=true, ratio to the persisted recording x1.136 meets NFR-07 (<= 2x) |
+| XL | 1017092 events, 20 nodes | parse the log | 3465 ms | indexes persisted in 16.6 ms |
+| XL | 1017092 events, 20 nodes | worst of 100 jumps | 14.9 ms | meets NFR-06 (< 5000 ms); session open 308.8 ms (the log was already parsed) |
+| XL | 1017092 events, 20 nodes | replay time | 4115 ms | verified=true, ratio to the persisted recording x1.175 meets NFR-07 (<= 2x) |
 | B14 | AD-1 to AD-6 + KA scenarios | wall clock | 0.116 seconds | all checks passed; target < 600 s |
 | SOAK | 10000 seeds, KA-0 control | violations | 0 runs | expected 0; law problems: 0; 100 runs also graph-checked and replay-verified |
-| SOAK | 10000 seeds, 1559049 events | wall clock | 1.345 seconds | 7435 runs/s on 12 threads |
-| NFR01 | pingpong default plan | identical | 1000/1000 runs | 100% identical (each seed run twice, on different thread counts); 0.057 s |
+| SOAK | 10000 seeds, 1559049 events | wall clock | 1.326 seconds | 7543 runs/s on 12 threads |
+| NFR01 | pingpong default plan | identical | 1000/1000 runs | 100% identical (each seed run twice, on different thread counts); 0.054 s |
 | NFR01 | pingpong with chaos plans | identical | 1000/1000 runs | 100% identical (each seed run twice, on different thread counts); 0.056 s |
-| NFR01 | causal default plan | identical | 1000/1000 runs | 100% identical (each seed run twice, on different thread counts); 0.075 s |
-| NFR01 | causal with chaos plans | identical | 1000/1000 runs | 100% identical (each seed run twice, on different thread counts); 0.074 s |
-| NFR01 | re default plan | identical | 1000/1000 runs | 100% identical (each seed run twice, on different thread counts); 0.132 s |
-| NFR01 | re with chaos plans | identical | 1000/1000 runs | 100% identical (each seed run twice, on different thread counts); 0.125 s |
-| NFR01 | re2 default plan | identical | 1000/1000 runs | 100% identical (each seed run twice, on different thread counts); 0.133 s |
-| NFR01 | re2 with chaos plans | identical | 1000/1000 runs | 100% identical (each seed run twice, on different thread counts); 0.149 s |
-| NFR01 | ka2 default plan | identical | 1000/1000 runs | 100% identical (each seed run twice, on different thread counts); 0.077 s |
-| NFR01 | ka2 with chaos plans | identical | 1000/1000 runs | 100% identical (each seed run twice, on different thread counts); 0.084 s |
-| NFR01 | ka3 default plan | identical | 1000/1000 runs | 100% identical (each seed run twice, on different thread counts); 0.095 s |
-| NFR01 | ka3 with chaos plans | identical | 1000/1000 runs | 100% identical (each seed run twice, on different thread counts); 0.095 s |
-| NFR01 | control default plan | identical | 1000/1000 runs | 100% identical (each seed run twice, on different thread counts); 0.075 s |
-| NFR01 | control with chaos plans | identical | 1000/1000 runs | 100% identical (each seed run twice, on different thread counts); 0.073 s |
-| NFR01 | gossip default plan | identical | 1000/1000 runs | 100% identical (each seed run twice, on different thread counts); 1.696 s |
-| NFR01 | gossip with chaos plans | identical | 1000/1000 runs | 100% identical (each seed run twice, on different thread counts); 1.477 s |
+| NFR01 | causal default plan | identical | 1000/1000 runs | 100% identical (each seed run twice, on different thread counts); 0.092 s |
+| NFR01 | causal with chaos plans | identical | 1000/1000 runs | 100% identical (each seed run twice, on different thread counts); 0.102 s |
+| NFR01 | re default plan | identical | 1000/1000 runs | 100% identical (each seed run twice, on different thread counts); 0.218 s |
+| NFR01 | re with chaos plans | identical | 1000/1000 runs | 100% identical (each seed run twice, on different thread counts); 0.137 s |
+| NFR01 | re2 default plan | identical | 1000/1000 runs | 100% identical (each seed run twice, on different thread counts); 0.153 s |
+| NFR01 | re2 with chaos plans | identical | 1000/1000 runs | 100% identical (each seed run twice, on different thread counts); 0.150 s |
+| NFR01 | ka2 default plan | identical | 1000/1000 runs | 100% identical (each seed run twice, on different thread counts); 0.075 s |
+| NFR01 | ka2 with chaos plans | identical | 1000/1000 runs | 100% identical (each seed run twice, on different thread counts); 0.077 s |
+| NFR01 | ka3 default plan | identical | 1000/1000 runs | 100% identical (each seed run twice, on different thread counts); 0.103 s |
+| NFR01 | ka3 with chaos plans | identical | 1000/1000 runs | 100% identical (each seed run twice, on different thread counts); 0.097 s |
+| NFR01 | control default plan | identical | 1000/1000 runs | 100% identical (each seed run twice, on different thread counts); 0.071 s |
+| NFR01 | control with chaos plans | identical | 1000/1000 runs | 100% identical (each seed run twice, on different thread counts); 0.080 s |
+| NFR01 | gossip default plan | identical | 1000/1000 runs | 100% identical (each seed run twice, on different thread counts); 1.675 s |
+| NFR01 | gossip with chaos plans | identical | 1000/1000 runs | 100% identical (each seed run twice, on different thread counts); 1.422 s |
 
 ## JMH micro-benchmarks (JDK 21, 1 fork, 2 warm-up and 3 measurement iterations of 1 s)
 
@@ -146,7 +150,7 @@ JmhBenchmarks.vectorReceive                 50  avgt    3   206.022 ±   5.981  
 JmhBenchmarks.vectorReceive                100  avgt    3   422.234 ±  32.394  ns/op
 ```
 
-Reading the numbers: the vector-clock cost grows roughly linearly with the node count (B3, harness: 72 ns per receive at 3
+Reading the numbers: the vector-clock cost grows roughly linearly with the node count (B3, harness: 70 ns per receive at 3
 nodes, 428 ns at 100), so delta compression of vectors is **not** needed for the design envelope of 3-20 nodes
 (96 ns at 20). The own random generator costs ~2 ns, an identity-keyed decision ~18 ns.
 
@@ -157,10 +161,10 @@ engine thread waits instead of memory growing, and every event is still persiste
 
 | Simulated delay per step group | Engine throughput | Queue high-water |
 |---|---|---|
-| 0 us per step group | 247,913 events/s | 256 of 256 groups |
-| 100 us per step group | 18,430 events/s | 256 of 256 groups |
-| 500 us per step group | 3,800 events/s | 256 of 256 groups |
-| 2000 us per step group | 1,036 events/s | 256 of 256 groups |
+| 0 us per step group | 304,641 events/s | 229 of 256 groups |
+| 100 us per step group | 18,545 events/s | 256 of 256 groups |
+| 500 us per step group | 3,743 events/s | 256 of 256 groups |
+| 2000 us per step group | 1,037 events/s | 256 of 256 groups |
 
 ## What the soak proves and does not prove
 
