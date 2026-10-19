@@ -25,8 +25,11 @@ chronos run tutorial                                   # recorded T0: no violati
 chronos run tutorial --fault partition:100:200:sender\|receiver --no-stop
 ```
 
-The second run prints the story of the failure by itself: the violated invariant, the causal chain from the partition to the
-violation and the fields the invariant read (the WITNESS edges). Names you will see: **timeline** (`T0`, `T1`: one recorded run),
+The second run prints the violated invariant and `why`: the causal chains from node starts and inputs to the violation, with the fields
+the invariant read (the WITNESS edges). **Notice what is missing: the partition is not in the chain.** Here the receiver simply never gets
+two ticks and nothing waits for them with a timer, so the silence left no event behind (a fault is linked to the *timers* that noticed
+it, specification D-23). `why` tells you what happened; to find what was *necessary*, ask the counterfactual questions in section 5. In
+the replicated store (`chronos run re`) a watchdog timer notices the silence, so the chain does start at the partition. Names you will see: **timeline** (`T0`, `T1`: one recorded run),
 **event** (`sender#3`: the 3rd event of node `sender`; events of the environment are `env`, named by what they concern, such as
 `fault:f1-partition#1`), **edge kinds** (MESSAGE, TIMER, FAULT, OMISSION, WITNESS, ...).
 
