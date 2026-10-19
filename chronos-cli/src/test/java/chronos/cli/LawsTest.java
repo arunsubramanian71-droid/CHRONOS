@@ -292,6 +292,59 @@ class LawsTest {
         }
     }
 
+    @Test
+    void m6_aBranchMadeAtItsParentsOwnBranchPointDoesNotInheritTheParentsInterventions() {
+        // found by the intervention fuzzer (seed 5219): the lineage replay applied the parent's interventions to a grandchild whose prefix does not contain them
+        Env env = new Env(tmp);
+        env.record("re", 42, Map.of(), null, Boolean.FALSE);
+        String t0 = env.last;
+        long at = env.manager.roundToBoundary(t0, 40);
+        long vt = env.events(t0).get((int) at).virtualTime();
+        String child = env.manager.branch(t0, at, List.of(Intervention.crashNode("a1", "b", vt + 30)), null, null).timelineId();
+        String grand = env.manager.branch(child, at, List.of(Intervention.pauseNode("a2", "p", vt + 10, 50)), null, null).timelineId();
+        assertEquals(env.events(t0).subList(0, (int) at + 1).stream().map(Event::eventId).toList(), env.events(grand).subList(0, (int) at + 1).stream().map(Event::eventId).toList());
+        assertTrue(env.events(grand).stream().noneMatch(e -> e.eventId().equals("iv:a1")), "the grandchild's history does not contain its parent's intervention");
+        assertTrue(env.replay.verify(grand).ok());
+        assertTrue(env.replay.verify(child).ok());
+    }
+
+    @Test
+    void m5_everyCheckpointEqualsTheWorldReachedByReplayingFromTheStartEvenAfterSilentSteps() {
+        // found by the intervention fuzzer (seed 6716): a silent step (a restart rule for a node that is not down) consumed its agenda item,
+        // a checkpoint after it claimed the previous boundary without that item, and a grandchild branched from it ended at the wrong time
+        Env env = new Env(tmp);
+        env.checkpointInterval = 1;
+        env.manager.withCheckpointInterval(1);
+        env.record("re", 42, Map.of(), null, Boolean.FALSE);
+        String t0 = env.last;
+        long at = env.manager.roundToBoundary(t0, 40);
+        long vt = env.events(t0).get((int) at).virtualTime();
+        String child = env.manager.branch(t0, at, List.of(Intervention.restartNode("r", "p", vt + 1)), null, null).timelineId();
+        LogReader noCheckpoints = new LogReader() {
+            public List<String> timelineIds() { return env.store.timelineIds(); }
+            public TimelineHeader header(String id) { return env.store.header(id); }
+            public TimelineSummary summary(String id) { return env.store.summary(id); }
+            public List<Event> events(String id) { return env.store.events(id); }
+            public List<Long> groupEnds(String id) { return env.store.groupEnds(id); }
+            public Optional<WorldImage> checkpointAtOrBefore(String id, long seq) { return Optional.empty(); }
+            public List<Long> checkpointSeqs(String id) { return List.of(); }
+        };
+        ReplayEngine scratch = new ReplayEngine(noCheckpoints, env.registry);
+        int compared = 0;
+        for (long seq : env.store.checkpointSeqs(child)) {
+            WorldImage image = env.store.checkpointAtOrBefore(child, seq).orElseThrow();
+            if (image.seq() != seq || !env.store.groupEnds(child).contains(seq)) continue;
+            Map<String, Object> fromScratch = scratch.buildAt(child, seq).engine().captureImage().data();
+            for (String key : List.of("agenda", "time", "step", "nodes", "faults"))
+                assertEquals(Canon.json(fromScratch.get(key)), Canon.json(image.data().get(key)), "checkpoint " + seq + ": " + key + " must equal the world replayed from the start");
+            compared++;
+        }
+        assertTrue(compared >= 5, "checkpoints compared: " + compared);
+        long second = env.manager.roundToBoundary(child, at + 1);
+        String grand = env.manager.branch(child, second, List.of(Intervention.skewClock("k", "b", vt + 10, 5, null)), null, null).timelineId();
+        assertTrue(env.replay.verify(grand).ok());
+    }
+
     // ---------------------------------------------------------------- M8 locality
     @Test
     void m8_nodesWithNoCausalConnectionToAnInterventionBehaveIdenticallyInTheBranch() {

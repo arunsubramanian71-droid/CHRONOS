@@ -325,7 +325,9 @@ public final class Engine {
         checkInvariants(group, trigger);
         scanAfterEvents(group);
         recorder.commit(group);
-        afterCommit();
+        // A step that recorded nothing leaves the log where it was, so a checkpoint taken after it would claim the previous boundary
+        // while its agenda lacks the item that step consumed (a silent restart rule, say, that still decides when the run ends).
+        if (!group.isEmpty()) afterCommit();
         return true;
     }
 
