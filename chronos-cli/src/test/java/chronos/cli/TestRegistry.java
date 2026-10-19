@@ -14,12 +14,14 @@ final class TestRegistry implements ScenarioRegistry {
     public List<String> names() {
         List<String> l = new ArrayList<>(demo.names());
         l.add("twopairs");
+        l.add("clocky");
         return l;
     }
 
     @Override
     public Scenario create(String name, Map<String, String> params) {
         if (name.equals("twopairs")) return new TwoPairs();
+        if (name.equals("clocky")) return new Clocky();
         return demo.create(name, params);
     }
 
@@ -44,5 +46,21 @@ final class TestRegistry implements ScenarioRegistry {
             c.setTimer("t", 25 + c.random("t", 10));
         }
         public void onMessage(NodeContext c, Message m) { c.state().put("n", c.state().getLong("n", 0) + 1); }
+    }
+
+    /** A node that records the time it READS on every timer firing, to show what a clock-skew fault does and does not change. */
+    static final class Clocky implements Scenario {
+        public String name() { return "clocky"; }
+        public long defaultHorizon() { return 400; }
+        public List<NodeSpec> nodes() { return List.of(new NodeSpec("a", ClockReader::new), new NodeSpec("b", ClockReader::new)); }
+    }
+
+    static final class ClockReader implements Node {
+        public void onStart(NodeContext c) { c.state().put("lastRead", c.now()); c.setTimer("t", 50); }
+        public void onTimer(NodeContext c, TimerFiring t) {
+            c.state().put("lastRead", c.now());
+            c.send(c.self().equals("a") ? "b" : "a", "ping", Map.of());
+            c.setTimer("t", 50);
+        }
     }
 }

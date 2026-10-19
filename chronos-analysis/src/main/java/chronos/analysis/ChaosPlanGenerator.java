@@ -21,7 +21,7 @@ public final class ChaosPlanGenerator {
         List<FaultRule> rules = new ArrayList<>();
         int n = 1 + pick(r, 4);
         for (int i = 1; i <= n; i++) {
-            switch (pick(r, 5)) {
+            switch (pick(r, 10)) {
                 case 0 -> {
                     if (nodes.size() < 2) continue;
                     List<String> shuffled = new ArrayList<>(nodes);
@@ -39,6 +39,28 @@ public final class ChaosPlanGenerator {
                 }
                 case 2 -> rules.add(FaultRule.probabilistic("c" + i + "-drop", FaultRule.FaultAction.DROP, nodes.get(pick(r, nodes.size())), "*", "*", 30 + pick(r, 220), null));
                 case 3 -> rules.add(FaultRule.probabilistic("c" + i + "-delay", FaultRule.FaultAction.DELAY, nodes.get(pick(r, nodes.size())), "*", "*", 30 + pick(r, 220), (long) (10 + pick(r, 190))));
+                case 4 -> {
+                    String node = nodes.get(pick(r, nodes.size()));
+                    rules.add(FaultRule.pause("c" + i + "-pause", node, 20 + pick(r, Math.max(1, (int) (horizon / 2))), 30 + pick(r, 300)));
+                }
+                case 5 -> {
+                    String node = nodes.get(pick(r, nodes.size()));
+                    rules.add(FaultRule.clockSkew("c" + i + "-skew", node, pick(r, Math.max(1, (int) (horizon / 2))), pick(r, 4000) - 2000L, pick(r, 2) == 0 ? null : (long) (50 + pick(r, 300))));
+                }
+                case 6 -> {
+                    if (nodes.size() < 2) continue;
+                    String a = nodes.get(pick(r, nodes.size()));
+                    String b = nodes.get(pick(r, nodes.size()));
+                    if (a.equals(b)) continue;
+                    rules.add(FaultRule.slowLink("c" + i + "-slow", a, b, 2 + pick(r, 5), pick(r, Math.max(1, (int) (horizon / 2))), pick(r, 2) == 0 ? null : (long) (50 + pick(r, 300))));
+                }
+                case 7 -> rules.add(FaultRule.reorder("c" + i + "-reorder", nodes.get(pick(r, nodes.size())), nodes.get(pick(r, nodes.size())), "*", 1 + pick(r, 6)));
+                case 8 -> {
+                    String node = nodes.get(pick(r, nodes.size()));
+                    String trigger = nodes.get(pick(r, nodes.size())) + "#" + (2 + pick(r, 8));
+                    rules.add(pick(r, 2) == 0 ? FaultRule.after("c" + i + "-crash-after", trigger, FaultRule.FaultAction.CRASH, java.util.Map.of("node", node))
+                            : FaultRule.after("c" + i + "-pause-after", trigger, FaultRule.FaultAction.PAUSE, java.util.Map.of("node", node, "duration", (long) (30 + pick(r, 200)))));
+                }
                 default -> rules.add(FaultRule.probabilistic("c" + i + "-dup", FaultRule.FaultAction.DUPLICATE, nodes.get(pick(r, nodes.size())), "*", "*", 30 + pick(r, 170), null));
             }
         }

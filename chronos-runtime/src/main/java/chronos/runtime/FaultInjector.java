@@ -21,6 +21,9 @@ final class FaultInjector {
     private final Map<String, Long> ordinals = new TreeMap<>();    // per-sender message ordinals, key "from>to|type"
     private final List<ActiveFault> active = new ArrayList<>();
     private final List<ActiveFault> history = new ArrayList<>();
+    private final Map<String, String> reorderPending = new TreeMap<>();  // REORDER rule -> the armed (n-th) message id
+    private final Set<String> triggered = new TreeSet<>();               // AFTER_EVENT rules already scheduled
+    private final Map<String, Long> shifts = new TreeMap<>();            // partition rule -> how many ms an intervention lengthened it
 
     FaultInjector(FaultPlan plan) {
         for (FaultRule r : plan.rules()) addRule(r, null);
@@ -126,6 +129,63 @@ final class FaultInjector {
         return out;
     }
 
+    /** Rules triggered by the recording of the given event that have not been scheduled yet. */
+    List<FaultRule> afterEvent(String eventId) {
+        List<FaultRule> out = new ArrayList<>();
+        for (FaultRule r : rules.values())
+            if (r.trigger() == FaultRule.TriggerType.AFTER_EVENT && eventId.equals(r.str("event")) && !triggered.contains(r.id())) out.add(r);
+        return out;
+    }
+
+    void markTriggered(String ruleId) {
+        triggered.add(ruleId);
+    }
+
+    void shiftedBy(String ruleId, long by) {
+        shifts.put(ruleId, by);
+    }
+
+    long shift(String ruleId) {
+        return shifts.getOrDefault(ruleId, 0L);
+    }
+
+    void armReorder(String ruleId, String msgId) {
+        reorderPending.put(ruleId, msgId);
+    }
+
+    /** Armed REORDER rules for this link whose first message is waiting for its successor; they are disarmed. */
+    List<String[]> takeReorders(String from, String to, String type) {
+        List<String[]> out = new ArrayList<>();
+        for (Iterator<Map.Entry<String, String>> it = reorderPending.entrySet().iterator(); it.hasNext(); ) {
+            Map.Entry<String, String> e = it.next();
+            FaultRule r = rules.get(e.getKey());
+            if (r == null) {
+                it.remove();
+            } else if (matches(r, from, to, type)) {
+                out.add(new String[]{e.getKey(), e.getValue()});
+                it.remove();
+            }
+        }
+        return out;
+    }
+
+    ActiveFault activeByRule(String ruleId) {
+        for (ActiveFault f : active) if (f.ruleId.equals(ruleId)) return f;
+        return null;
+    }
+
+    ActiveFault activePause(String node) {
+        for (ActiveFault f : active) if (f.kind.equals("pause") && node.equals(f.node)) return f;
+        return null;
+    }
+
+    List<ActiveFault> slowLinks(String from, String to) {
+        List<ActiveFault> out = new ArrayList<>();
+        for (ActiveFault f : active)
+            if (f.kind.equals("slowlink") && wild((String) f.extra.get("sender"), from) && wild((String) f.extra.get("receiver"), to)) out.add(f);
+        return out;
+    }
+
     ActiveFault activePartition(String ruleId) {
         for (ActiveFault f : active) if (f.kind.equals("partition") && f.ruleId.equals(ruleId)) return f;
         return null;
@@ -159,7 +219,8 @@ final class FaultInjector {
     }
 
     private static boolean touches(NodeSlot slot, ActiveFault f) {
-        if (f.kind.equals("crash")) return !slot.name.equals(f.node) && slot.heardFrom.contains(f.node);
+        if (f.kind.equals("crash") || f.kind.equals("pause")) return !slot.name.equals(f.node) && slot.heardFrom.contains(f.node);
+        if (!f.kind.equals("partition")) return false;
         int g = f.groupOf(slot.name);
         if (g < 0) return false;
         for (String heard : slot.heardFrom) {
@@ -186,6 +247,9 @@ final class FaultInjector {
         List<Object> hl = new ArrayList<>();
         for (ActiveFault f : history) hl.add(f.toMap());
         m.put("history", hl);
+        m.put("reorderPending", reorderPending);
+        m.put("triggered", new ArrayList<>(triggered));
+        m.put("shifts", shifts);
         return m;
     }
 
@@ -201,6 +265,9 @@ final class FaultInjector {
         for (Map.Entry<String, Object> e : Canon.map(m.get("ordinals")).entrySet()) fi.ordinals.put(e.getKey(), Canon.num(e.getValue()));
         for (Object o : Canon.list(m.get("active"))) fi.active.add(ActiveFault.fromMap(Canon.map(o)));
         for (Object o : Canon.list(m.get("history"))) fi.history.add(ActiveFault.fromMap(Canon.map(o)));
+        if (m.containsKey("reorderPending")) for (Map.Entry<String, Object> e : Canon.map(m.get("reorderPending")).entrySet()) fi.reorderPending.put(e.getKey(), (String) e.getValue());
+        if (m.containsKey("triggered")) for (Object o : Canon.list(m.get("triggered"))) fi.triggered.add((String) o);
+        if (m.containsKey("shifts")) for (Map.Entry<String, Object> e : Canon.map(m.get("shifts")).entrySet()) fi.shifts.put(e.getKey(), Canon.num(e.getValue()));
         return fi;
     }
 }

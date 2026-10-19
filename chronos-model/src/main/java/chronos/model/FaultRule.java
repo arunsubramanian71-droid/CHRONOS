@@ -8,15 +8,21 @@ import java.util.*;
  * Parameters by action:
  *   PARTITION  at, duration (optional: no duration means it never heals), groups (list of lists of node names)
  *   CRASH      node, at          RESTART  node, at
+ *   PAUSE      node, at, duration   the node freezes, its items are held until it resumes
+ *   CLOCK_SKEW node, at, offset, duration (optional)   the time the node READS changes; logical clocks do not
+ *   SLOW_LINK  sender, receiver, factor, at, duration (optional)   deliveries on one link take factor times as long
+ *   AFTER_EVENT trigger: any of the time-triggered actions with 'event' (an event id) instead of 'at'
+ *   REORDER    (ON_NTH_MESSAGE) swaps the n-th and the (n+1)-th message of sender, receiver, type
  *   DROP / DELAY (by) / DUPLICATE   with trigger ON_MESSAGE_ID (messageId), ON_NTH_MESSAGE (sender, receiver, type, n)
  *                                   or PROBABILISTIC (sender, receiver, type, perMille)
  * A wildcard sender "*" is allowed only if the rule is flagged nonLocal, which voids law M8 for the run.
  */
 public record FaultRule(String id, TriggerType trigger, FaultAction action, Map<String, Object> params, boolean nonLocal) {
 
-    public enum TriggerType { AT_TIME, ON_MESSAGE_ID, ON_NTH_MESSAGE, PROBABILISTIC }
+    /** AFTER_EVENT fires immediately after a named event has been recorded ("crash b right after p#40"). */
+    public enum TriggerType { AT_TIME, AFTER_EVENT, ON_MESSAGE_ID, ON_NTH_MESSAGE, PROBABILISTIC }
 
-    public enum FaultAction { PARTITION, CRASH, RESTART, DROP, DELAY, DUPLICATE }
+    public enum FaultAction { PARTITION, CRASH, RESTART, PAUSE, CLOCK_SKEW, SLOW_LINK, DROP, DELAY, DUPLICATE, REORDER }
 
     public FaultRule {
         if (id == null || id.isBlank() || id.contains("#") || id.contains(":"))
@@ -29,12 +35,16 @@ public record FaultRule(String id, TriggerType trigger, FaultAction action, Map<
         switch (t) {
             case AT_TIME -> {
                 require(id, p, "at");
-                if (a != FaultAction.PARTITION && a != FaultAction.CRASH && a != FaultAction.RESTART)
-                    throw new IllegalArgumentException("rule " + id + ": a time trigger supports PARTITION, CRASH and RESTART only");
+                timed(id, a);
+            }
+            case AFTER_EVENT -> {
+                require(id, p, "event");
+                timed(id, a);
             }
             case ON_MESSAGE_ID -> {
                 require(id, p, "messageId");
                 messageAction(id, a);
+                if (a == FaultAction.REORDER) throw new IllegalArgumentException("rule " + id + ": REORDER needs an ON_NTH_MESSAGE trigger");
                 if (p.containsKey("maxFirings")) throw new IllegalArgumentException("rule " + id + ": maxFirings is only allowed on time-triggered rules (D-13)");
             }
             case ON_NTH_MESSAGE -> {
@@ -45,21 +55,39 @@ public record FaultRule(String id, TriggerType trigger, FaultAction action, Map<
             case PROBABILISTIC -> {
                 for (String k : List.of("sender", "receiver", "type", "perMille")) require(id, p, k);
                 messageAction(id, a);
+                if (a == FaultAction.REORDER) throw new IllegalArgumentException("rule " + id + ": REORDER needs an ON_NTH_MESSAGE trigger");
             }
         }
-        if (t != TriggerType.AT_TIME && p.containsKey("sender") && "*".equals(p.get("sender")) && !nonLocal)
+        if ((t == TriggerType.ON_NTH_MESSAGE || t == TriggerType.PROBABILISTIC) && p.containsKey("sender") && "*".equals(p.get("sender")) && !nonLocal)
             throw new IllegalArgumentException("rule " + id + ": a wildcard sender requires the nonLocal flag (D-13)");
         switch (a) {
             case PARTITION -> require(id, p, "groups");
             case CRASH, RESTART -> require(id, p, "node");
+            case PAUSE -> {
+                require(id, p, "node");
+                require(id, p, "duration");
+            }
+            case CLOCK_SKEW -> {
+                require(id, p, "node");
+                require(id, p, "offset");
+            }
+            case SLOW_LINK -> {
+                for (String k : List.of("sender", "receiver", "factor")) require(id, p, k);
+                if (Canon.num(p.get("factor")) < 1) throw new IllegalArgumentException("rule " + id + ": factor must be at least 1");
+            }
             case DELAY -> require(id, p, "by");
             default -> { }
         }
     }
 
+    private static void timed(String id, FaultAction a) {
+        if (a == FaultAction.DROP || a == FaultAction.DELAY || a == FaultAction.DUPLICATE || a == FaultAction.REORDER)
+            throw new IllegalArgumentException("rule " + id + ": a time or event trigger supports PARTITION, CRASH, RESTART, PAUSE, CLOCK_SKEW and SLOW_LINK only");
+    }
+
     private static void messageAction(String id, FaultAction a) {
-        if (a != FaultAction.DROP && a != FaultAction.DELAY && a != FaultAction.DUPLICATE)
-            throw new IllegalArgumentException("rule " + id + ": message triggers support DROP, DELAY and DUPLICATE only");
+        if (a != FaultAction.DROP && a != FaultAction.DELAY && a != FaultAction.DUPLICATE && a != FaultAction.REORDER)
+            throw new IllegalArgumentException("rule " + id + ": message triggers support DROP, DELAY, DUPLICATE and REORDER only");
     }
 
     private static void require(String id, Map<String, Object> p, String k) {
@@ -132,5 +160,40 @@ public record FaultRule(String id, TriggerType trigger, FaultAction action, Map<
         p.put("perMille", perMille);
         if (by != null) p.put("by", by);
         return new FaultRule(id, TriggerType.PROBABILISTIC, action, p, "*".equals(sender));
+    }
+
+    public static FaultRule pause(String id, String node, long at, long duration) {
+        return new FaultRule(id, TriggerType.AT_TIME, FaultAction.PAUSE, Map.of("node", node, "at", at, "duration", duration), false);
+    }
+
+    public static FaultRule clockSkew(String id, String node, long at, long offset, Long duration) {
+        Map<String, Object> p = new TreeMap<>();
+        p.put("node", node);
+        p.put("at", at);
+        p.put("offset", offset);
+        if (duration != null) p.put("duration", duration);
+        return new FaultRule(id, TriggerType.AT_TIME, FaultAction.CLOCK_SKEW, p, false);
+    }
+
+    public static FaultRule slowLink(String id, String sender, String receiver, long factor, long at, Long duration) {
+        Map<String, Object> p = new TreeMap<>();
+        p.put("sender", sender);
+        p.put("receiver", receiver);
+        p.put("factor", factor);
+        p.put("at", at);
+        if (duration != null) p.put("duration", duration);
+        return new FaultRule(id, TriggerType.AT_TIME, FaultAction.SLOW_LINK, p, false);
+    }
+
+    public static FaultRule reorder(String id, String sender, String receiver, String type, long n) {
+        return nth(id, FaultAction.REORDER, sender, receiver, type, n, null);
+    }
+
+    /** A time-triggered action that instead fires right after the named event has been recorded. */
+    public static FaultRule after(String id, String eventId, FaultAction action, Map<String, Object> actionParams) {
+        Map<String, Object> p = new TreeMap<>(actionParams);
+        p.remove("at");
+        p.put("event", eventId);
+        return new FaultRule(id, TriggerType.AFTER_EVENT, action, p, false);
     }
 }

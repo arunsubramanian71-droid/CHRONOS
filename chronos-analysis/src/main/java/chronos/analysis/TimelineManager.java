@@ -62,6 +62,13 @@ public final class TimelineManager {
     /** The result of a branch run. */
     public record BranchResult(String timelineId, long branchSeq, RunResult result, TimelineHeader header) {}
 
+    /** True if the timeline or any ancestor was created with a synthetic intervention (it is permanently marked, Section 19). */
+    public boolean isSynthetic(String timelineId) {
+        for (TimelineHeader h = store.header(timelineId); h != null; h = h.parentId() == null ? null : store.header(h.parentId()))
+            for (Intervention iv : h.interventions()) if (iv.synthetic()) return true;
+        return false;
+    }
+
     /** The largest step boundary at or before a position: "a world can only be restored between steps" (Section 17 rule 2). */
     public long roundToBoundary(String timelineId, long atSeq) {
         long best = -1;

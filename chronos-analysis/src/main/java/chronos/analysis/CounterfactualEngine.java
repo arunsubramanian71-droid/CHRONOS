@@ -127,7 +127,7 @@ public final class CounterfactualEngine {
             if (iv >= 0) affected = g.causalFuture(iv).length;
         }
         return new Report(verdict, baseline, child, br.branchSeq(), q.interventions(), div, baseFail ? bInv + " at " + bv.eventId() + " (t=" + bv.virtualTime() + ")" : null,
-                childFail ? cInv + " at " + cv.eventId() + " (t=" + cv.virtualTime() + ")" : null, affected, why, false);
+                childFail ? cInv + " at " + cv.eventId() + " (t=" + cv.virtualTime() + ")" : null, affected, why, manager.isSynthetic(child));
     }
 
     private static Event byId(List<Event> es, String id) {

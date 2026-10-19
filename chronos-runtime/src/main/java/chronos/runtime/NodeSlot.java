@@ -31,6 +31,9 @@ final class NodeSlot {
     final Node node;
     NodeState state = new NodeState();
     boolean crashed;
+    boolean paused;     // frozen: its agenda items are held until resumeAt
+    long resumeAt;
+    long skew;          // clock-skew fault: the offset added to the time the node reads (logical clocks are unaffected)
     long counter;
     Ref last;
     Ref startRef;
@@ -51,6 +54,9 @@ final class NodeSlot {
         Map<String, Object> m = new TreeMap<>();
         m.put("name", name);
         m.put("crashed", crashed);
+        m.put("paused", paused);
+        m.put("resumeAt", resumeAt);
+        m.put("skew", skew);
         m.put("counter", counter);
         if (last != null) m.put("last", last.toMap());
         if (startRef != null) m.put("start", startRef.toMap());
@@ -67,6 +73,9 @@ final class NodeSlot {
 
     void restore(Map<String, Object> m) {
         crashed = Boolean.TRUE.equals(m.get("crashed"));
+        paused = Boolean.TRUE.equals(m.get("paused"));
+        resumeAt = m.containsKey("resumeAt") ? Canon.num(m.get("resumeAt")) : 0;
+        skew = m.containsKey("skew") ? Canon.num(m.get("skew")) : 0;
         counter = Canon.num(m.get("counter"));
         last = m.containsKey("last") ? Ref.fromMap(Canon.map(m.get("last"))) : null;
         startRef = m.containsKey("start") ? Ref.fromMap(Canon.map(m.get("start"))) : null;

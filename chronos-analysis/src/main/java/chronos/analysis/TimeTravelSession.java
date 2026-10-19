@@ -131,12 +131,27 @@ public final class TimeTravelSession {
 
     Map<String, Object> stateOf(String node, long boundary) {
         int[] ps = index.positionsOfNode(node);
+        long nodePos = -1;
+        Map<String, Object> state = Map.of();
         for (int i = ps.length - 1; i >= 0; i--) {
             if (ps[i] > boundary) continue;
             Event e = events.get(ps[i]);
-            if (e.stateAfter() != null) return e.stateAfter();
+            if (e.stateAfter() != null) {
+                state = e.stateAfter();
+                nodePos = ps[i];
+                break;
+            }
         }
-        return Map.of();
+        // a synthetic PATCH_STATE intervention carries the node's new state in its own event (Section 19)
+        for (int p : index.positionsOfKind(EventKind.INTERVENTION_APPLIED)) {
+            if (p > boundary || p <= nodePos) continue;
+            Event iv = events.get(p);
+            if (node.equals(iv.payload().get("patchedNode")) && iv.payload().get("stateAfter") != null) {
+                state = Canon.map(iv.payload().get("stateAfter"));
+                nodePos = p;
+            }
+        }
+        return state;
     }
 
     /** Logical clocks at the cursor: each slot's last event at or before it. */

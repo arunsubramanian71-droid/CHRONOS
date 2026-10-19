@@ -65,6 +65,25 @@ class LawsTest {
     }
 
     @Test
+    void m1_resumedReplayFromEveryCheckpointOfARunThatStoppedOnAViolationEndsWhereTheRunEnded() {
+        // regression: a checkpoint taken after the run stopped did not remember the stop, so the replay went on past the recording
+        Env env = new Env(tmp);
+        for (String sc : List.of("re", "ka2", "ka3", "re2")) {
+            env.record(sc, 42, Map.of());
+            String tl = env.last;
+            assertNotNull(env.store.summary(tl).firstViolationEventId(), sc);
+            for (long c : env.store.checkpointSeqs(tl)) {
+                ReplayEngine.Result r = env.replay.verifyFrom(tl, c);
+                assertTrue(r.ok(), sc + " from checkpoint " + c + ": " + r.summary());
+            }
+            // branching from the very end of the stopped run still continues (going live is allowed there)
+            long end = env.store.summary(tl).lastSeq();
+            var br = env.manager.branch(tl, end, List.of(), 1500L, null);
+            assertTrue(env.store.summary(br.timelineId()).lastSeq() >= end);
+        }
+    }
+
+    @Test
     void m1_aMutatedRecordingIsCaughtAtExactlyThatEvent() throws IOException {
         Env env = new Env(tmp);
         env.record("re", 42, Map.of());

@@ -39,6 +39,7 @@ public final class Engine {
     private final Map<String, Ref> lastWriters = new TreeMap<>();   // "node|volatile.field" -> last-writer trigger event
     private final Map<String, Long> envCounters = new TreeMap<>();  // identity counters for env events (fault:<rule>, inv:<name>)
     private final Set<String> violating = new TreeSet<>();
+    private final Map<String, String> configOverrides = new TreeMap<>();   // CONFIG_PATCH interventions
     private Ref envLast;
     private long time;
     private long stepCount;
@@ -116,6 +117,7 @@ public final class Engine {
         for (Object o : Canon.list(d.get("violating"))) e.violating.add((String) o);
         e.firstViolationId = (String) d.get("firstViolationId");
         e.firstViolationInvariant = (String) d.get("firstViolationInvariant");
+        if (d.containsKey("config")) for (Map.Entry<String, Object> en : Canon.map(d.get("config")).entrySet()) e.configOverrides.put(en.getKey(), (String) en.getValue());
         e.booted = true;
         return e;
     }
@@ -124,8 +126,10 @@ public final class Engine {
         Set<String> names = new TreeSet<>();
         for (NodeSpec n : scenario.nodes()) names.add(n.name());
         for (FaultRule r : plan.rules()) {
-            if (r.action() == FaultRule.FaultAction.CRASH || r.action() == FaultRule.FaultAction.RESTART)
-                if (!names.contains(r.str("node"))) throw new IllegalArgumentException("rule " + r.id() + " names unknown node " + r.str("node"));
+            if (r.params().containsKey("node") && !names.contains(r.str("node"))) throw new IllegalArgumentException("rule " + r.id() + " names unknown node " + r.str("node"));
+            if (r.action() == FaultRule.FaultAction.SLOW_LINK)
+                for (String k : List.of("sender", "receiver"))
+                    if (!"*".equals(r.str(k)) && !names.contains(r.str(k))) throw new IllegalArgumentException("rule " + r.id() + " names unknown node " + r.str(k));
             if (r.action() == FaultRule.FaultAction.PARTITION)
                 for (Object g : Canon.list(r.params().get("groups")))
                     for (Object n : Canon.list(g))
@@ -169,6 +173,18 @@ public final class Engine {
 
     public List<String> nodeNames() {
         return Collections.unmodifiableList(nodeOrder);
+    }
+
+    /**
+     * A verification replay that resumes from a checkpoint must stop where the original run stopped (an invariant violation or a
+     * node failure that ended it). Branching deliberately does not call this: going live from the end of a stopped timeline continues.
+     */
+    public void resumeStopState(WorldImage image) {
+        Object st = image.data().get("stopStatus");
+        if (st != null) {
+            stopRequested = true;
+            stopStatus = TimelineStatus.valueOf((String) st);
+        }
     }
 
     public void setDecisionSource(DecisionSource ds) {
@@ -234,6 +250,8 @@ public final class Engine {
             s.startRef = trig.ref();
             runHandler(s, trig.ref(), effects, ctx -> s.node.onStart(ctx));
             finishTrigger(s, trig, trigGroup, true);
+            scanAfterEvents(trigGroup);
+            scanAfterEvents(effects);
             recorder.commit(trigGroup);
             deferred.add(effects);
             if (stopRequested) break;
@@ -263,6 +281,11 @@ public final class Engine {
             return false;
         }
         agenda.poll();
+        NodeSlot held = pausedTarget(item);
+        if (held != null) { // a frozen node does not run: its item is held until it resumes (no event, no time passes)
+            agenda.add(item.withDue(Math.max(item.due(), held.resumeAt)));
+            return true;
+        }
         time = Math.max(time, item.due());
         stepCount++;
         List<Event> group = new ArrayList<>();
@@ -273,9 +296,30 @@ public final class Engine {
             case FAULT -> doFault(item, group);
         };
         checkInvariants(group, trigger);
+        scanAfterEvents(group);
         recorder.commit(group);
         afterCommit();
         return true;
+    }
+
+    /** The paused node an item would run on, or null (fault actions are never held). */
+    private NodeSlot pausedTarget(AgendaItem item) {
+        String n = switch (item.kind()) {
+            case DELIVERY -> (String) item.data().get("to");
+            case TIMER, CLIENT_INPUT -> (String) item.data().get("node");
+            case FAULT -> null;
+        };
+        NodeSlot s = n == null ? null : byName.get(n);
+        return s != null && s.paused ? s : null;
+    }
+
+    /** AFTER_EVENT triggers: a rule fires immediately after the event it names has been recorded. */
+    private void scanAfterEvents(List<Event> group) {
+        for (Event e : group)
+            for (FaultRule r : faults.afterEvent(e.eventId())) {
+                faults.markTriggered(r.id());
+                agenda.add(new AgendaItem(time, envIdx, AgendaItem.Kind.FAULT, r.id() + "#inject", mapOf("rule", r.id(), "op", "INJECT", "cause", e.ref().toMap())));
+            }
     }
 
     /** Runs to the end of the run and returns its result. */
@@ -326,7 +370,12 @@ public final class Engine {
             List<Link> links = envBase();
             links.add(new Link(sendRef, EdgeKind.MESSAGE));
             links.add(new Link(cut.ref, EdgeKind.FAULT));
-            group.add(emitEnv(dropId, EventKind.MESSAGE_DROPPED, mapOf("messageId", msgId, "reason", "partition " + cut.ruleId), links, null));
+            String dropOrigin = null;
+            if (cut.extender != null && cut.extendedFrom != null && time >= cut.extendedFrom) { // dropped only because an intervention lengthened the partition
+                links.add(new Link(cut.extender, EdgeKind.FAULT));
+                dropOrigin = faults.origin(cut.ruleId + "/clear");
+            }
+            group.add(emitEnv(dropId, EventKind.MESSAGE_DROPPED, mapOf("messageId", msgId, "reason", "partition " + cut.ruleId), links, dropOrigin));
             return null;
         }
         List<Link> links = new ArrayList<>();
@@ -374,7 +423,8 @@ public final class Engine {
         }
         List<Link> links = new ArrayList<>();
         if (s.last != null) links.add(new Link(s.last, EdgeKind.PROGRAM_ORDER));
-        Event trig = emitNode(s, EventKind.CLIENT_INPUT, mapOf("body", Canon.map(d.get("body"))), links, null);
+        if (d.get("cause") != null) links.add(new Link(Ref.fromMap(Canon.map(d.get("cause"))), EdgeKind.FAULT)); // an input an intervention added
+        Event trig = emitNode(s, EventKind.CLIENT_INPUT, mapOf("body", Canon.map(d.get("body"))), links, (String) d.get("origin"));
         group.add(trig);
         Map<String, Object> body = Canon.map(d.get("body"));
         runHandler(s, trig.ref(), group, ctx -> s.node.onClientInput(ctx, body));
@@ -387,17 +437,14 @@ public final class Engine {
         String op = (String) item.data().get("op");
         FaultRule rule = faults.rule(ruleId);
         if (rule == null) throw new IllegalStateException("fault rule " + ruleId + " is scheduled but unknown");
-        if (op.equals("CLEAR")) {
-            ActiveFault af = faults.activePartition(ruleId);
-            if (af != null) group.add(clearPartition(af, faults.origin(ruleId + "/clear")));
-            return null;
-        }
+        Ref cause = item.data().get("cause") == null ? null : Ref.fromMap(Canon.map(item.data().get("cause")));
+        if (op.equals("CLEAR")) return doClear(rule, group);
         String origin = faults.origin(ruleId);
         switch (rule.action()) {
             case PARTITION -> {
                 Map<String, Object> payload = mapOf("rule", ruleId, "action", "PARTITION", "groups", rule.params().get("groups"), "at", time);
                 if (rule.params().containsKey("duration")) payload.put("duration", rule.params().get("duration"));
-                Event fe = faultEvent(rule, null, payload);
+                Event fe = faultEvent(rule, cause, payload);
                 group.add(fe);
                 List<List<String>> groups = new ArrayList<>();
                 for (Object g : Canon.list(rule.params().get("groups"))) {
@@ -405,15 +452,20 @@ public final class Engine {
                     for (Object n : Canon.list(g)) l.add((String) n);
                     groups.add(l);
                 }
-                faults.activate(new ActiveFault("partition", ruleId, fe.ref(), time, null, groups, null));
-                if (rule.params().containsKey("duration"))
-                    agenda.add(new AgendaItem(time + rule.num("duration"), envIdx, AgendaItem.Kind.FAULT, ruleId + "#clear", mapOf("rule", ruleId, "op", "CLEAR")));
+                ActiveFault f = new ActiveFault("partition", ruleId, fe.ref(), time, null, groups, null);
+                long by = faults.shift(ruleId);
+                if (by > 0 && origin != null && faults.ivRef(origin) != null && rule.params().containsKey("duration")) {
+                    f.extendedFrom = time + rule.num("duration") - by; // the heal an intervention moved later
+                    f.extender = faults.ivRef(origin);
+                }
+                faults.activate(f);
+                scheduleClear(rule, envIdx);
                 return null;
             }
             case CRASH -> {
                 NodeSlot s = byName.get(rule.str("node"));
                 if (s.crashed) return null;
-                Event fe = faultEvent(rule, null, mapOf("rule", ruleId, "action", "CRASH", "node", s.name, "at", time));
+                Event fe = faultEvent(rule, cause, mapOf("rule", ruleId, "action", "CRASH", "node", s.name, "at", time));
                 group.add(fe);
                 List<Link> links = new ArrayList<>();
                 if (s.last != null) links.add(new Link(s.last, EdgeKind.PROGRAM_ORDER));
@@ -422,6 +474,11 @@ public final class Engine {
                 group.add(crash);
                 s.crashed = true;
                 s.crashRef = crash.ref();
+                if (s.paused) { // a crash ends a pause
+                    s.paused = false;
+                    ActiveFault pf = faults.activePause(s.name);
+                    if (pf != null) faults.close(pf, time);
+                }
                 s.state.wipeVolatile();
                 s.timers.clear();
                 agenda.removeIf(i -> i.kind() == AgendaItem.Kind.TIMER && s.name.equals(i.data().get("node")));
@@ -432,7 +489,7 @@ public final class Engine {
             case RESTART -> {
                 NodeSlot s = byName.get(rule.str("node"));
                 if (!s.crashed) return null;
-                Event fe = faultEvent(rule, null, mapOf("rule", ruleId, "action", "RESTART", "node", s.name, "at", time));
+                Event fe = faultEvent(rule, cause, mapOf("rule", ruleId, "action", "RESTART", "node", s.name, "at", time));
                 group.add(fe);
                 List<Link> links = new ArrayList<>();
                 if (s.last != null) links.add(new Link(s.last, EdgeKind.PROGRAM_ORDER));
@@ -446,7 +503,90 @@ public final class Engine {
                 finishTrigger(s, restart, group, false);
                 return restart.ref();
             }
-            default -> throw new IllegalStateException("rule " + ruleId + " (" + rule.action() + ") cannot be scheduled by time");
+            case PAUSE -> {
+                NodeSlot s = byName.get(rule.str("node"));
+                if (s.crashed || s.paused) return null;
+                long dur = rule.num("duration");
+                Event fe = faultEvent(rule, cause, mapOf("rule", ruleId, "action", "PAUSE", "node", s.name, "at", time, "duration", dur));
+                group.add(fe);
+                List<Link> links = new ArrayList<>();
+                if (s.last != null) links.add(new Link(s.last, EdgeKind.PROGRAM_ORDER));
+                links.add(new Link(fe.ref(), EdgeKind.FAULT));
+                Event paused = emitNode(s, EventKind.NODE_PAUSED, mapOf("duration", dur), links, origin);
+                group.add(paused);
+                s.paused = true;
+                s.resumeAt = time + dur;
+                faults.activate(new ActiveFault("pause", ruleId, fe.ref(), time, null, List.of(), s.name));
+                scheduleClear(rule, s.idx); // ordered with the node's own items so that the resume precedes the items it held
+                finishTrigger(s, paused, group, false);
+                return paused.ref();
+            }
+            case CLOCK_SKEW -> {
+                NodeSlot s = byName.get(rule.str("node"));
+                long offset = rule.num("offset");
+                Event fe = faultEvent(rule, cause, mapOf("rule", ruleId, "action", "CLOCK_SKEW", "node", s.name, "offset", offset, "at", time));
+                group.add(fe);
+                s.skew = offset; // only the time the node READS changes; Lamport and vector values count causal steps, not time
+                faults.activate(new ActiveFault("skew", ruleId, fe.ref(), time, null, List.of(), s.name));
+                scheduleClear(rule, envIdx);
+                return null;
+            }
+            case SLOW_LINK -> {
+                Event fe = faultEvent(rule, cause, mapOf("rule", ruleId, "action", "SLOW_LINK", "sender", rule.str("sender"), "receiver", rule.str("receiver"), "factor", rule.num("factor"), "at", time));
+                group.add(fe);
+                ActiveFault f = new ActiveFault("slowlink", ruleId, fe.ref(), time, null, List.of(), null);
+                f.extra.put("sender", rule.str("sender"));
+                f.extra.put("receiver", rule.str("receiver"));
+                f.extra.put("factor", rule.num("factor"));
+                faults.activate(f);
+                scheduleClear(rule, envIdx);
+                return null;
+            }
+            default -> throw new IllegalStateException("rule " + ruleId + " (" + rule.action() + ") cannot be scheduled by time or event");
+        }
+    }
+
+    private void scheduleClear(FaultRule rule, int nodeIdx) {
+        if (rule.params().containsKey("duration"))
+            agenda.add(new AgendaItem(time + rule.num("duration"), nodeIdx, AgendaItem.Kind.FAULT, rule.id() + "#clear", mapOf("rule", rule.id(), "op", "CLEAR")));
+    }
+
+    /** The end of a timed fault: heal a partition, resume a paused node, restore a clock, restore a link. */
+    private Ref doClear(FaultRule rule, List<Event> group) {
+        ActiveFault af = faults.activeByRule(rule.id());
+        if (af == null) return null;
+        String origin = faults.origin(rule.id() + "/clear");
+        switch (af.kind) {
+            case "partition" -> {
+                group.add(clearFault(af, origin, "PARTITION"));
+                return null;
+            }
+            case "skew" -> {
+                byName.get(af.node).skew = 0;
+                group.add(clearFault(af, origin, "CLOCK_SKEW"));
+                return null;
+            }
+            case "slowlink" -> {
+                group.add(clearFault(af, origin, "SLOW_LINK"));
+                return null;
+            }
+            case "pause" -> {
+                NodeSlot s = byName.get(af.node);
+                Event ce = clearFault(af, origin, "PAUSE");
+                group.add(ce);
+                if (!s.paused) return null;
+                s.paused = false;
+                List<Link> links = new ArrayList<>();
+                if (s.last != null) links.add(new Link(s.last, EdgeKind.PROGRAM_ORDER));
+                links.add(new Link(ce.ref(), EdgeKind.FAULT));
+                Event resumed = emitNode(s, EventKind.NODE_RESUMED, mapOf("reason", "fault " + rule.id()), links, origin);
+                group.add(resumed);
+                finishTrigger(s, resumed, group, false);
+                return resumed.ref();
+            }
+            default -> {
+                return null;
+            }
         }
     }
 
@@ -587,13 +727,13 @@ public final class Engine {
         return e;
     }
 
-    private Event clearPartition(ActiveFault af, String origin) {
+    private Event clearFault(ActiveFault af, String origin, String action) {
         long n = envCounters.merge("fault:" + af.ruleId, 1L, Long::sum);
         List<Link> links = envBase();
         links.add(new Link(af.ref, EdgeKind.FAULT));
         Ref iv = faults.ivRef(origin);
         if (iv != null) links.add(new Link(iv, EdgeKind.FAULT));
-        Event e = emitEnv("fault:" + af.ruleId + "#" + n, EventKind.FAULT_CLEARED, mapOf("rule", af.ruleId, "action", "PARTITION", "at", time), links, origin);
+        Event e = emitEnv("fault:" + af.ruleId + "#" + n, EventKind.FAULT_CLEARED, mapOf("rule", af.ruleId, "action", action, "at", time), links, origin);
         af.clearRef = e.ref();
         faults.close(af, time);
         return e;
@@ -652,7 +792,7 @@ public final class Engine {
 
         @Override
         public long now() {
-            return time;
+            return time + slot.skew;
         }
 
         @Override
@@ -663,7 +803,8 @@ public final class Engine {
 
         @Override
         public String config(String key) {
-            return scenario.config().get(key);
+            String o = configOverrides.get(key);
+            return o != null ? o : scenario.config().get(key);
         }
 
         @Override
@@ -718,6 +859,27 @@ public final class Engine {
                     dupCopies.add(copy);
                     if (origin == null) origin = faults.origin(r.id());
                 }
+            }
+            for (ActiveFault sl : faults.slowLinks(slot.name, to)) { // a slow link makes every delivery on it take factor times as long
+                due += latency * (Canon.num(sl.extra.get("factor")) - 1);
+                faultRefs.add(sl.ref);
+                if (origin == null) origin = faults.origin(sl.ruleId);
+            }
+            List<String[]> swaps = faults.takeReorders(slot.name, to, type);
+            for (FaultRule r : hits) if (r.action() == FaultRule.FaultAction.REORDER) faults.armReorder(r.id(), id); // the n-th message waits for its successor
+            for (String[] ro : swaps) {
+                AgendaItem heldMsg = agenda.find(i -> i.kind() == AgendaItem.Kind.DELIVERY && i.identity().equals(ro[1]));
+                if (heldMsg == null || heldMsg.due() > due) continue; // already delivered, dropped or already after this one
+                FaultRule r = faults.rule(ro[0]);
+                Event fe = faultEvent(r, sref, mapOf("rule", r.id(), "action", "REORDER", "messageId", ro[1], "swappedWith", id));
+                sink.add(fe);
+                Map<String, Object> nd = new TreeMap<>(heldMsg.data());
+                List<Object> fr = new ArrayList<>(Canon.list(nd.get("faultRefs")));
+                fr.add(fe.ref().toMap());
+                nd.put("faultRefs", fr);
+                if (faults.origin(r.id()) != null) nd.put("origin", faults.origin(r.id()));
+                agenda.removeIf(i -> i.kind() == AgendaItem.Kind.DELIVERY && i.identity().equals(ro[1]));
+                agenda.add(heldMsg.withDue(due + 1).withData(nd));
             }
             agenda.add(deliveryItem(id, due, target.idx, id, slot.name, to, type, nbody, sref, faultRefs, origin, 0));
             for (int k = 0; k < dupCopies.size(); k++) {
@@ -783,13 +945,38 @@ public final class Engine {
         if (ivs.isEmpty()) return;
         List<Event> group = new ArrayList<>();
         for (Intervention iv : ivs) {
-            Event ev = emitEnv(iv.eventId(), EventKind.INTERVENTION_APPLIED,
-                    mapOf("id", iv.id(), "type", iv.type(), "params", iv.params(), "at", time), envBase(), null);
+            Map<String, Object> payload = mapOf("id", iv.id(), "type", iv.type(), "params", iv.params(), "at", time);
+            NodeSlot patched = null;
+            if (iv.type().equals(Intervention.PATCH_STATE)) { // a synthetic edit: the new state is carried by the intervention event itself
+                patched = byName.get((String) iv.params().get("node"));
+                if (patched == null) throw new IllegalArgumentException("intervention " + iv.id() + ": unknown node " + iv.params().get("node"));
+                String field = (String) iv.params().get("field");
+                if (field.startsWith("volatile.")) patched.state.put(field.substring(9), iv.params().get("value"));
+                else if (field.startsWith("durable.")) patched.state.putDurable(field.substring(8), iv.params().get("value"));
+                else throw new IllegalArgumentException("intervention " + iv.id() + ": the field must be zone-qualified (volatile.x or durable.x)");
+                payload.put("patchedNode", patched.name);
+                payload.put("stateAfter", patched.node.stateCodec().encode(patched.state));
+            }
+            Event ev = emitEnv(iv.eventId(), EventKind.INTERVENTION_APPLIED, payload, envBase(), null);
             group.add(ev);
             faults.registerIntervention(iv.eventId(), ev.ref());
+            if (patched != null) {
+                lastWriters.put(patched.name + "|" + iv.params().get("field"), ev.ref());
+                patched.fieldDigests = fieldDigests(patched);
+            }
             applyOne(iv, ev.ref(), group);
         }
+        scanAfterEvents(group);
         recorder.commit(group);
+    }
+
+    private static AgendaItem withIntervention(AgendaItem it, Ref ivRef, String origin) {
+        Map<String, Object> nd = new TreeMap<>(it.data());
+        List<Object> fr = new ArrayList<>(Canon.list(nd.get("faultRefs")));
+        fr.add(ivRef.toMap());
+        nd.put("faultRefs", fr);
+        nd.put("origin", origin);
+        return it.withData(nd);
     }
 
     private void applyOne(Intervention iv, Ref ivRef, List<Event> group) {
@@ -803,8 +990,10 @@ public final class Engine {
                 if (r.action() == FaultRule.FaultAction.CRASH && faults.activeCrash(r.str("node")) != null)
                     throw new IllegalArgumentException("intervention " + iv.id() + ": the crash of " + r.str("node") + " already happened and cannot be removed");
                 agenda.removeIf(i -> i.kind() == AgendaItem.Kind.FAULT && ruleId.equals(i.data().get("rule")));
-                ActiveFault af = faults.activePartition(ruleId);
-                if (af != null) group.add(clearPartition(af, origin));
+                if (faults.activeByRule(ruleId) != null) { // an active partition heals, a paused node resumes, a skewed clock is restored, now
+                    faults.setOrigin(ruleId + "/clear", origin);
+                    doClear(r, group);
+                }
                 faults.removeRule(ruleId);
             }
             case Intervention.SHIFT_HEAL -> {
@@ -820,6 +1009,10 @@ public final class Engine {
                     agenda.removeIf(i -> i.identity().equals(clr.identity()));
                     agenda.add(clr.withDue(Math.max(time, clr.due() + by)));
                     faults.setOrigin(ruleId + "/clear", origin);
+                    if (by > 0) { // the drops of the extra time are the intervention's doing
+                        af.extendedFrom = clr.due();
+                        af.extender = ivRef;
+                    }
                 } else {
                     AgendaItem inj = agenda.find(i -> i.kind() == AgendaItem.Kind.FAULT && ruleId.equals(i.data().get("rule")) && "INJECT".equals(i.data().get("op")));
                     if (inj == null || !r.params().containsKey("duration"))
@@ -831,6 +1024,7 @@ public final class Engine {
                     faults.replaceRule(new FaultRule(r.id(), r.trigger(), r.action(), np, r.nonLocal()));
                     faults.setOrigin(ruleId, origin);
                     faults.setOrigin(ruleId + "/clear", origin);
+                    faults.shiftedBy(ruleId, by);
                 }
             }
             case Intervention.DROP_MESSAGE -> {
@@ -892,6 +1086,54 @@ public final class Engine {
                 faults.addRule(r, origin);
                 scheduleRule(r);
             }
+            case Intervention.PAUSE_NODE -> {
+                String node = (String) p.get("node");
+                long at = Canon.num(p.get("at")), dur = Canon.num(p.get("duration"));
+                if (!byName.containsKey(node)) throw new IllegalArgumentException("intervention " + iv.id() + ": unknown node " + node);
+                if (at < time || dur <= 0) throw new IllegalArgumentException("intervention " + iv.id() + ": a pause needs a start in the future and a positive duration");
+                FaultRule r = FaultRule.pause("iv_" + iv.id(), node, at, dur);
+                faults.addRule(r, origin);
+                scheduleRule(r);
+            }
+            case Intervention.SKEW_CLOCK -> {
+                String node = (String) p.get("node");
+                long at = Canon.num(p.get("at"));
+                if (!byName.containsKey(node)) throw new IllegalArgumentException("intervention " + iv.id() + ": unknown node " + node);
+                if (at < time) throw new IllegalArgumentException("intervention " + iv.id() + ": cannot skew a clock in the past");
+                FaultRule r = FaultRule.clockSkew("iv_" + iv.id(), node, at, Canon.num(p.get("offset")), p.containsKey("duration") ? Canon.num(p.get("duration")) : null);
+                faults.addRule(r, origin);
+                scheduleRule(r);
+            }
+            case Intervention.ADD_INPUT -> {
+                String node = (String) p.get("node");
+                long at = Canon.num(p.get("at"));
+                NodeSlot s = byName.get(node);
+                if (s == null) throw new IllegalArgumentException("intervention " + iv.id() + ": unknown node " + node);
+                if (at < time) throw new IllegalArgumentException("intervention " + iv.id() + ": cannot add an input in the past");
+                Map<String, Object> data = mapOf("node", node, "body", Canon.map(p.get("body")), "index", -1L, "origin", origin, "cause", ivRef.toMap());
+                agenda.add(new AgendaItem(at, s.idx, AgendaItem.Kind.CLIENT_INPUT, "ci:iv_" + iv.id(), data));
+            }
+            case Intervention.REMOVE_INPUT -> {
+                String ident = String.format("ci:%06d", Canon.num(p.get("index")));
+                if (!agenda.removeIf(i -> i.kind() == AgendaItem.Kind.CLIENT_INPUT && i.identity().equals(ident)))
+                    throw new IllegalArgumentException("intervention " + iv.id() + ": there is no pending client input " + ident + " (it already happened or never existed)");
+            }
+            case Intervention.SWAP_DELIVERIES -> {
+                String a = (String) p.get("a"), b = (String) p.get("b");
+                AgendaItem ia = agenda.find(i -> i.kind() == AgendaItem.Kind.DELIVERY && i.identity().equals(a));
+                AgendaItem ib = agenda.find(i -> i.kind() == AgendaItem.Kind.DELIVERY && i.identity().equals(b));
+                if (ia == null || ib == null) throw new IllegalArgumentException("intervention " + iv.id() + ": both messages must be in flight at the branch point to be swapped");
+                agenda.removeIf(i -> i.kind() == AgendaItem.Kind.DELIVERY && (i.identity().equals(a) || i.identity().equals(b)));
+                agenda.add(withIntervention(ia.withDue(ib.due()), ivRef, origin));
+                agenda.add(withIntervention(ib.withDue(ia.due()), ivRef, origin));
+            }
+            case Intervention.CONFIG_PATCH -> configOverrides.put((String) p.get("key"), (String) p.get("value"));
+            case Intervention.RESEED_STREAM -> {
+                NodeSlot s = byName.get((String) p.get("node"));
+                if (s == null) throw new IllegalArgumentException("intervention " + iv.id() + ": unknown node " + p.get("node"));
+                s.randomStates.put((String) p.get("stream"), Canon.num(p.get("seed")));
+            }
+            case Intervention.PATCH_STATE -> { /* applied before the event was recorded, see applyInterventions */ }
             default -> throw new IllegalArgumentException("unknown intervention type: " + iv.type());
         }
     }
@@ -929,6 +1171,8 @@ public final class Engine {
         d.put("violating", new ArrayList<>(violating));
         d.put("firstViolationId", firstViolationId);
         d.put("firstViolationInvariant", firstViolationInvariant);
+        d.put("config", configOverrides);
+        d.put("stopStatus", stopRequested && stopStatus != null ? stopStatus.name() : null);
         return new WorldImage(recorder.timelineId(), recorder.nextSeq() - 1, d);
     }
 

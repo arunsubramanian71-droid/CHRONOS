@@ -16,6 +16,9 @@ final class ActiveFault {
     final long start;
     Long end;
     Ref clearRef;   // the FAULT_CLEARED event, once the fault has ended
+    Map<String, Object> extra = new TreeMap<>();  // kind-specific data (slow link: sender, receiver, factor)
+    Long extendedFrom;   // a partition whose heal an intervention moved later: from when the extra drops are the intervention's doing
+    Ref extender;        // that intervention's event
     final List<List<String>> groups;
     final String node;
 
@@ -49,6 +52,9 @@ final class ActiveFault {
         m.put("start", start);
         if (end != null) m.put("end", end);
         if (clearRef != null) m.put("clearRef", clearRef.toMap());
+        if (!extra.isEmpty()) m.put("extra", extra);
+        if (extendedFrom != null) m.put("extendedFrom", extendedFrom);
+        if (extender != null) m.put("extender", extender.toMap());
         m.put("groups", groups);
         if (node != null) m.put("node", node);
         return m;
@@ -64,6 +70,9 @@ final class ActiveFault {
         ActiveFault f = new ActiveFault((String) m.get("kind"), (String) m.get("rule"), Ref.fromMap(Canon.map(m.get("ref"))),
                 Canon.num(m.get("start")), m.containsKey("end") ? Canon.num(m.get("end")) : null, groups, (String) m.get("node"));
         if (m.containsKey("clearRef")) f.clearRef = Ref.fromMap(Canon.map(m.get("clearRef")));
+        if (m.containsKey("extra")) f.extra = new TreeMap<>(Canon.map(m.get("extra")));
+        if (m.containsKey("extendedFrom")) f.extendedFrom = Canon.num(m.get("extendedFrom"));
+        if (m.containsKey("extender")) f.extender = Ref.fromMap(Canon.map(m.get("extender")));
         return f;
     }
 }

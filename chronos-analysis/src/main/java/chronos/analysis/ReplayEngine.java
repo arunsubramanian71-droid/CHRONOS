@@ -143,6 +143,7 @@ public final class ReplayEngine {
                 ci = 1;
             } else {
                 engine = Engine.restore(scenario, start, ds, recorder, opts);
+                if (upTo < 0) engine.resumeStopState(start); // a full verification must end where the original run ended
                 booted = true;
                 ci = 1;
                 while (ci < lineage.size() && lineage.get(ci).branchSeq() < start.seq()) ci++;
