@@ -1,0 +1,6 @@
+target/
+.DS_Store
+chronos-data/
+*.iml
+.idea/
+.vscode/

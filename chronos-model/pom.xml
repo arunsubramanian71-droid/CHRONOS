@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent><groupId>dev.chronos</groupId><artifactId>chronos-parent</artifactId><version>0.2.0</version></parent>
+  <artifactId>chronos-model</artifactId>
+  <name>chronos-model</name>
+  <description>Events, ids, kinds, clocks (C4), canonical encoding, digests, world-image/fault/intervention types, LogReader and EventSink. Depends on no project module.</description>
+  <dependencies>
+    <!-- Jackson is the only approved runtime library (D-09); CHRONOS owns the canonical rules and the digests. -->
+    <dependency><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId></dependency>
+  </dependencies>
+</project>

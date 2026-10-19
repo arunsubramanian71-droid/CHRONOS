@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent><groupId>dev.chronos</groupId><artifactId>chronos-parent</artifactId><version>0.2.0</version></parent>
+  <artifactId>chronos-runtime</artifactId>
+  <name>chronos-runtime</name>
+  <description>Engine (C2), decision-source interface + record mode (C3), recorder (C5), fault injector (C12), invariant checker (C15), checkpoint capture/restore. Depends on sdk, model.</description>
+  <dependencies>
+    <dependency><groupId>dev.chronos</groupId><artifactId>chronos-sdk</artifactId></dependency>
+    <dependency><groupId>dev.chronos</groupId><artifactId>chronos-model</artifactId></dependency>
+  </dependencies>
+</project>
