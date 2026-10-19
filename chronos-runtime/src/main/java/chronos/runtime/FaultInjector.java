@@ -137,6 +137,14 @@ final class FaultInjector {
         return out;
     }
 
+    /** ON_STATE rules watching a node that have not fired yet. */
+    List<FaultRule> onState(String node) {
+        List<FaultRule> out = new ArrayList<>();
+        for (FaultRule r : rules.values())
+            if (r.trigger() == FaultRule.TriggerType.ON_STATE && node.equals(r.str("watchNode")) && !triggered.contains(r.id())) out.add(r);
+        return out;
+    }
+
     void markTriggered(String ruleId) {
         triggered.add(ruleId);
     }

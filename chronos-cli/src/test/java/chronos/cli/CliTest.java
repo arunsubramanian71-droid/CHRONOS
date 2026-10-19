@@ -225,6 +225,9 @@ class CliTest {
         R slow = cli("run", "ka2", "--param", "delay=off", "--fault", "slow:p:b:5:0", "--no-stop");
         assertEquals(0, slow.code());
         assertTrue(slow.out().contains("fault coverage: {f1-slow=1}"), slow.out());
+        R onState = cli("run", "re", "--param", "partition=off", "--fault", "state:p:volatile.hb=3:crash:p", "--no-stop");
+        assertEquals(0, onState.code(), onState.err());
+        assertTrue(onState.out().contains("fault coverage: {f1-state=1}"), onState.out());
         R skew = cli("run", "re", "--fault", "skew:b:100:500:200");
         assertEquals(0, skew.code(), skew.err());
         for (String bad : List.of("frobnicate:x", "pause:p:300", "crash:p:abc"))

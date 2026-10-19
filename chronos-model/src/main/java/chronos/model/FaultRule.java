@@ -12,6 +12,8 @@ import java.util.*;
  *   CLOCK_SKEW node, at, offset, duration (optional)   the time the node READS changes; logical clocks do not
  *   SLOW_LINK  sender, receiver, factor, at, duration (optional)   deliveries on one link take factor times as long
  *   AFTER_EVENT trigger: any of the time-triggered actions with 'event' (an event id) instead of 'at'
+ *   ON_STATE trigger: the same actions, fired the first time a node's state field equals a value
+ *                     (watchNode, watchField zone-qualified such as volatile.role, watchValue)
  *   REORDER    (ON_NTH_MESSAGE) swaps the n-th and the (n+1)-th message of sender, receiver, type
  *   DROP / DELAY (by) / DUPLICATE   with trigger ON_MESSAGE_ID (messageId), ON_NTH_MESSAGE (sender, receiver, type, n)
  *                                   or PROBABILISTIC (sender, receiver, type, perMille)
@@ -20,7 +22,7 @@ import java.util.*;
 public record FaultRule(String id, TriggerType trigger, FaultAction action, Map<String, Object> params, boolean nonLocal) {
 
     /** AFTER_EVENT fires immediately after a named event has been recorded ("crash b right after p#40"). */
-    public enum TriggerType { AT_TIME, AFTER_EVENT, ON_MESSAGE_ID, ON_NTH_MESSAGE, PROBABILISTIC }
+    public enum TriggerType { AT_TIME, AFTER_EVENT, ON_STATE, ON_MESSAGE_ID, ON_NTH_MESSAGE, PROBABILISTIC }
 
     public enum FaultAction { PARTITION, CRASH, RESTART, PAUSE, CLOCK_SKEW, SLOW_LINK, DROP, DELAY, DUPLICATE, REORDER }
 
@@ -39,6 +41,13 @@ public record FaultRule(String id, TriggerType trigger, FaultAction action, Map<
             }
             case AFTER_EVENT -> {
                 require(id, p, "event");
+                timed(id, a);
+            }
+            case ON_STATE -> {
+                for (String k : List.of("watchNode", "watchField", "watchValue")) require(id, p, k);
+                String f = (String) p.get("watchField");
+                if (!f.startsWith("volatile.") && !f.startsWith("durable."))
+                    throw new IllegalArgumentException("rule " + id + ": watchField must be zone-qualified (volatile.x or durable.x)");
                 timed(id, a);
             }
             case ON_MESSAGE_ID -> {
@@ -195,5 +204,15 @@ public record FaultRule(String id, TriggerType trigger, FaultAction action, Map<
         p.remove("at");
         p.put("event", eventId);
         return new FaultRule(id, TriggerType.AFTER_EVENT, action, p, false);
+    }
+
+    /** A time-triggered action that fires the first time a node's state field equals a value ("crash p when its role is PRIMARY"). */
+    public static FaultRule onState(String id, String watchNode, String watchField, Object watchValue, FaultAction action, Map<String, Object> actionParams) {
+        Map<String, Object> p = new TreeMap<>(actionParams);
+        p.remove("at");
+        p.put("watchNode", watchNode);
+        p.put("watchField", watchField);
+        p.put("watchValue", watchValue);
+        return new FaultRule(id, TriggerType.ON_STATE, action, p, false);
     }
 }

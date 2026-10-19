@@ -67,7 +67,7 @@ D-01 to D-22 "Approved" but D-23 to D-26 "New in v0.2". All four were implemente
 
 ## Not implemented (NOT IMPLEMENTED)
 
-The "on node state" fault trigger (Stretch); the Pinned continuation policy (deferred by D-15); node-local replay R5 (Stretch);
+The Pinned continuation policy (deferred by D-15); node-local replay R5 (Stretch);
 intervention search over the causal past FR-38 (Stretch; `findCriticalFaultSets` over fault *rules* is the bounded form, DEV-14);
 consistent cuts (Stretch); the live local viewer FR-50 (Stretch, D-18); the knowledge view (Could); log compression (cut line);
 persisted index files; the blind debugging protocol of Phase 17 (it needs a second person); verification on **Windows**.

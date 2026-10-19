@@ -28,6 +28,7 @@ final class Cli {
                   --fault SPEC adds a fault rule: partition:AT:DUR:a,b|c  crash:NODE:AT  restart:NODE:AT  pause:NODE:AT:DUR
                   skew:NODE:AT:OFFSET[:DUR]  slow:FROM:TO:FACTOR:AT[:DUR]  drop:MSGID  delay:MSGID:MS  dup:MSGID
                   reorder:FROM:TO:TYPE:N  after:EVENT:crash:NODE  after:EVENT:pause:NODE:DUR
+                  state:WATCHNODE:volatile.field=VALUE:crash:NODE  state:WATCHNODE:volatile.field=VALUE:pause:NODE:DUR
               ls                                          the timeline tree
               show <timeline> [--table|--diagram|--dot|--json] [--limit N]    print the recorded history
               inspect <timeline> [--goto violation|SEQ|EVENT] [--back N] [--step N] [--state NODE]... [--world]
@@ -196,6 +197,14 @@ final class Cli {
                 case "dup" -> FaultRule.onMessage(id, FaultRule.FaultAction.DUPLICATE, spec.substring(4), null);
                 case "delay" -> FaultRule.onMessage(id, FaultRule.FaultAction.DELAY, p[1], Long.parseLong(p[2]));
                 case "reorder" -> FaultRule.reorder(id, p[1], p[2], p[3], Long.parseLong(p[4]));
+                case "state" -> {
+                    int eq = p[2].indexOf('=');
+                    if (eq < 1) throw new CliException("--fault state:NODE:field=VALUE:crash:NODE");
+                    String raw = p[2].substring(eq + 1);
+                    Object val = raw.matches("-?\\d+") ? (Object) Long.parseLong(raw) : raw.equals("true") || raw.equals("false") ? (Object) Boolean.parseBoolean(raw) : raw;
+                    yield p[3].equals("crash") ? FaultRule.onState(id, p[1], p[2].substring(0, eq), val, FaultRule.FaultAction.CRASH, Map.of("node", p[4]))
+                            : FaultRule.onState(id, p[1], p[2].substring(0, eq), val, FaultRule.FaultAction.PAUSE, Map.of("node", p[4], "duration", Long.parseLong(p[5])));
+                }
                 case "after" -> p[2].equals("crash") ? FaultRule.after(id, p[1], FaultRule.FaultAction.CRASH, Map.of("node", p[3]))
                         : FaultRule.after(id, p[1], FaultRule.FaultAction.PAUSE, Map.of("node", p[3], "duration", Long.parseLong(p[4])));
                 default -> throw new CliException("unknown fault kind '" + p[0] + "' in --fault " + spec);

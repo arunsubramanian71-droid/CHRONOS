@@ -11,7 +11,7 @@ It is implemented from the architecture contract `CHRONOS System Specification v
 Terms such as *Node API*, *event*, *step*, *timeline*, *intervention*, *OMISSION edge* and *first causal divergence* are used
 exactly as the specification defines them.
 
-> **Status in one paragraph.** All eight modules exist and build (verified on macOS and on Linux); 136 automated tests pass; the flagship
+> **Status in one paragraph.** All eight modules exist and build (verified on macOS and on Linux); 137 automated tests pass; the flagship
 > demonstration (acceptance demonstrations AD-1 to AD-6 and known-answer scenarios KA-0, KA-2, KA-3, KA-4 on the replicated store "RE")
 > runs from one command with 24 self-checks; the whole fault catalogue and the whole intervention catalogue of the specification are
 > implemented and tested. What is **not** done (for example the live viewer, intervention search over the causal past, the blind
@@ -68,7 +68,7 @@ java -version && mvn -version      # both must report Java 21
 ## Build and test
 
 ```bash
-mvn -ntp package          # compiles all eight modules, runs all 136 tests, builds the two jars
+mvn -ntp package          # compiles all eight modules, runs all 137 tests, builds the two jars
 ```
 
 Produces `chronos-cli/target/chronos.jar` (the CLI) and `chronos-bench/target/chronos-bench.jar` (benchmarks). Dependencies are
@@ -149,7 +149,7 @@ Measured results (and which targets of Section 8 were met or missed) are in [`do
 
 * Simulation only (D-03): no real network, no real processes; applications are written against the Node API.
 * Not implemented: the live local viewer and intervention search over the causal past (both Stretch), the knowledge view, node-local
-  replay, the "on node state" fault trigger, persisted index files, and a **blind** debugging evaluation with a second person
+  replay, persisted index files, and a **blind** debugging evaluation with a second person
   (`docs/EVALUATION.md` evaluates the analysers on 800 unplanned chaos runs instead, and says what that does not show).
 * Verified on macOS (Apple Silicon, JDK 21) and on Linux (Ubuntu 24.04 in a container); **Windows is not verified**.
 * A counterfactual is evidence about the simulated world under CHRONOS's rules, not proof about reality (Section 19).

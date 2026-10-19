@@ -180,6 +180,28 @@ class FaultCatalogueTest {
         assertReplays(env, tl);
     }
 
+    // ------------------------------------------------------------------------------------------------ on node state
+    @Test
+    void aRuleCanFireTheFirstTimeANodesStateSatisfiesAPredicate() {
+        Env env = env();
+        FaultPlan plan = FaultPlan.of(FaultRule.onState("crash-p-at-hb3", "p", "volatile.hb", 3L, FaultAction.CRASH, Map.of("node", "p")));
+        env.record("re", 42, Map.of("partition", "off"), plan, Boolean.FALSE);
+        String tl = env.last;
+        List<Event> ev = env.events(tl);
+        Event crash = byKind(ev, EventKind.NODE_CRASHED).get(0);
+        assertEquals("p", crash.nodeId());
+        // the trigger is the step in which p's heartbeat counter became 3: the third heartbeat timer firing
+        Event trigger = ev.stream().filter(e -> e.nodeId().equals("p") && e.kind() == EventKind.TIMER_FIRED).skip(2).findFirst().orElseThrow();
+        Event fault = ev.stream().filter(e -> e.eventId().equals("fault:crash-p-at-hb3#1")).findFirst().orElseThrow();
+        assertTrue(fault.parents().stream().anyMatch(p -> p.id().equals(trigger.eventId()) && p.kind() == EdgeKind.STEP_EFFECT));
+        assertEquals(trigger.virtualTime(), crash.virtualTime(), "immediately after the step that made the predicate true");
+        // it fires once: p stays down (no restart rule) and b, hearing nothing, eventually promotes
+        assertEquals(1, byKind(ev, EventKind.NODE_CRASHED).size());
+        assertReplays(env, tl);
+        assertThrows(IllegalArgumentException.class, () -> new FaultRule("r", FaultRule.TriggerType.ON_STATE, FaultAction.CRASH, Map.of("node", "p", "watchNode", "p", "watchField", "hb", "watchValue", 1), false));
+        assertThrows(IllegalArgumentException.class, () -> env.record("re", 1, Map.of(), FaultPlan.of(FaultRule.onState("x", "ghost", "volatile.a", 1L, FaultAction.CRASH, Map.of("node", "p"))), null));
+    }
+
     // ------------------------------------------------------------------------------------------------ interventions
     @Test
     void pauseAndSkewInterventionsIntroduceAFailure_sufficiency() {

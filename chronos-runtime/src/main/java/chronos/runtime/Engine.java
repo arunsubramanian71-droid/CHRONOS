@@ -126,6 +126,7 @@ public final class Engine {
         Set<String> names = new TreeSet<>();
         for (NodeSpec n : scenario.nodes()) names.add(n.name());
         for (FaultRule r : plan.rules()) {
+            if (r.params().containsKey("watchNode") && !names.contains(r.str("watchNode"))) throw new IllegalArgumentException("rule " + r.id() + " watches unknown node " + r.str("watchNode"));
             if (r.params().containsKey("node") && !names.contains(r.str("node"))) throw new IllegalArgumentException("rule " + r.id() + " names unknown node " + r.str("node"));
             if (r.action() == FaultRule.FaultAction.SLOW_LINK)
                 for (String k : List.of("sender", "receiver"))
@@ -625,6 +626,13 @@ public final class Engine {
         s.fieldDigests = now;
         int i = indexOf(group, trig.eventId());
         group.set(i, group.get(i).withState(sd, (forceState || !changed.isEmpty()) ? enc : null));
+        for (FaultRule r : faults.onState(s.name)) { // ON_STATE triggers: the first time the watched field equals the watched value
+            Object v = s.state.read(r.str("watchField"));
+            if (v != null && Canon.json(v).equals(Canon.json(r.params().get("watchValue")))) {
+                faults.markTriggered(r.id());
+                agenda.add(new AgendaItem(time, envIdx, AgendaItem.Kind.FAULT, r.id() + "#inject", mapOf("rule", r.id(), "op", "INJECT", "cause", trig.ref().toMap())));
+            }
+        }
     }
 
     private static int indexOf(List<Event> group, String id) {

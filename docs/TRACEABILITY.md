@@ -28,7 +28,7 @@ Paths are relative to the module's `src/main/java/chronos/<package>/`.
 | D-10 | Digest every step, full state on change | runtime `Engine.finishTrigger` | `LawsTest.m2` | COMPLETE |
 | D-11 | Segmented JSON-lines log, commit lines, derived indexes, checkpoints, no DB | store `TimelineStore`, `TimelineWriter`, `TimelineIndex` | `TimelineStoreTest`, `PersistenceTest` | COMPLETE (indexes in memory: DEV-16) |
 | D-12 | Immutable timelines, branch references prefix | store `TimelineStore.events/segments`; analysis `TimelineManager` | `LawsTest.m6, m11`, `TimelineStoreTest` | COMPLETE |
-| D-13 | Fault rules keyed by time/identity; triggers at time, after a named event, on message id, nth message, probabilistic; `nonLocal` wildcard | model `FaultRule`, `FaultPlan`; runtime `FaultInjector` | `CanonTest.faultRuleValidationFollowsD13`, `LawsTest.m8`, `FaultCatalogueTest` | COMPLETE (`maxFirings` validated only: DEV-19; the Stretch trigger "on node state" NOT IMPLEMENTED) |
+| D-13 | Fault rules keyed by time/identity; triggers at time, after a named event, on message id, nth message, probabilistic; `nonLocal` wildcard | model `FaultRule`, `FaultPlan`; runtime `FaultInjector` | `CanonTest.faultRuleValidationFollowsD13`, `LawsTest.m8`, `FaultCatalogueTest` | COMPLETE (`maxFirings` validated only: DEV-19; the Stretch trigger "on node state" is COMPLETE: `FaultRule.onState`, first time a watched field equals a value, `FaultCatalogueTest.aRuleCanFireTheFirstTimeANodesStateSatisfiesAPredicate`) |
 | D-14 | Own causal graph on dense arrays | analysis `CausalGraph` | `CausalGraphTest`, `LawsTest.m3_m4` | COMPLETE |
 | D-15 | Continue policy | analysis `BranchDecisionSource`, `TimelineManager` | `LawsTest.m6, m7` | COMPLETE (Pinned deferred by the spec) |
 | D-16 | First causal divergence, per-timeline taint, anchor rule | analysis `TimelineComparator` | `ComparatorTest`, `AcceptanceTest.ad5`, `LawsTest.m10` | COMPLETE (fallback when no anchor: DEV-10) |
@@ -73,7 +73,7 @@ Paths are relative to the module's `src/main/java/chronos/<package>/`.
 | 28 | State watch | `TimeTravelSession.watch`; `LawsTest.m14`, `CliTest.session...` | COMPLETE |
 | 29 | Branch at any step boundary sharing the prefix by reference | `TimelineManager`; `LawsTest.m6` | COMPLETE |
 | 30 | Timeline tree; inspect; delete leaves | `TimelineManager.tree`, `TimelineStore.delete`; `CliTest.deleteOnlyLeaf...` | COMPLETE |
-| 31 | Fault plans with triggers and actions | `FaultRule`, `FaultInjector`, `Engine`; `FaultCatalogueTest`, `EngineTest`, CLI `--fault` | COMPLETE: partition + heal, drop, delay, crash (Must); restart, duplicate, reorder, pause, clock skew (Should); slow link (Could); triggers at time, after event, on message id, nth message, probabilistic (the Stretch trigger "on state" is not implemented) |
+| 31 | Fault plans with triggers and actions | `FaultRule`, `FaultInjector`, `Engine`; `FaultCatalogueTest`, `EngineTest`, CLI `--fault` | COMPLETE: partition + heal, drop, delay, crash (Must); restart, duplicate, reorder, pause, clock skew (Should); slow link (Could); triggers at time, after event, on message id, nth message, probabilistic and the Stretch trigger "on node state" |
 | 32 | Faults recorded with causal edges incl. OMISSION | `Engine`; `EngineTest`, `AcceptanceTest.ad1` | COMPLETE |
 | 33 | Probabilistic faults by identity hashing | `RecordDecisionSource`, `ReplayDecisionSource`; `EngineTest.probabilistic...` | COMPLETE |
 | 34 | Interventions at a branch point, run to horizon or violation | `Engine.applyInterventions`, `TimelineManager`; `AcceptanceTest.ad4`, `FaultCatalogueTest`, `CliTest` | COMPLETE: the whole catalogue of Section 19 (drop, delay, swap/reorder, duplicate, crash/restart/pause, create/move/remove a partition, clock skew, add/remove input, config patch, reseed, patch state); DEV-27 to DEV-29 |
@@ -167,7 +167,7 @@ are each exercised in `KnownAnswerTest`.
 | 9 replay — Milestone C | COMPLETE |
 | 10a, 11, 12a, 13a, 14a — Milestone S | COMPLETE |
 | 10b deeper time travel | COMPLETE (`run-to` breakpoints, `find`, `watch`, `diff`, `effects`, `concurrent-with`, `next-on`, `prev-on`; world reconstruction from the nearest checkpoint) |
-| 12b fault catalogue | COMPLETE (durable zone and restart, all faults, the other triggers except the Stretch "on state", OMISSION scopes for crash and pause, sequential campaigns) |
+| 12b fault catalogue | COMPLETE (durable zone and restart, all faults, all triggers including "on node state", OMISSION scopes for crash and pause, sequential campaigns) |
 | 13b full counterfactuals | COMPLETE (whole intervention catalogue, parallel pool, campaigns on the pool); `DIFFERENT_FAILURE` simplified (DEV-08) |
 | 14b comparator hardening | COMPLETE (concurrent roots, absorbed divergence, suspected nondeterminism, KA-4) |
 | 15a static HTML report | COMPLETE |
