@@ -61,6 +61,10 @@ final class Args {
         }
     }
 
+    int positionalCount() {
+        return pos.size();
+    }
+
     String positional(int i, String what) {
         if (i >= pos.size()) throw new CliException("missing argument: " + what);
         return pos.get(i);

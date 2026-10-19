@@ -69,6 +69,7 @@ Paths are relative to the module's `src/main/java/chronos/<package>/`.
 | 21 | Checkpoints at interval and branch points; restorable | `Engine.captureImage/restore`; `LawsTest.m5` | COMPLETE |
 | 22, 23 | Replay from start or checkpoint; verify every event; report first mismatch | `ReplayEngine`, `VerifyingSink`; `LawsTest.m1`, `AcceptanceTest.ad2` | COMPLETE |
 | 24 | Stepped replay with breakpoints | `ReplayEngine.runUntil`, session `run-to`; `SoakTest.steppedReplay...`, `CliTest.session...` | COMPLETE (DEV-17) |
+| 24b | R5 Node-local replay (Stretch) | `NodeLocalReplay` (analysis), CLI `local-replay` | COMPLETE for nodes with a real input sequence (DEV-32); `NodeLocalReplayTest` (every node of 10 scenarios x default/chaos x 25 seeds, tampered output, tampered state, bad citizen, refusal for PATCH_STATE), `CliTest.localReplay...` |
 | 25, 26, 27 | Time-travel session: goto, step, back, next/prev, find; inspect; causal queries | `TimeTravelSession`, CLI `inspect`, `session`; `AcceptanceTest.ad3`, `CliTest.session...` | COMPLETE |
 | 28 | State watch | `TimeTravelSession.watch`; `LawsTest.m14`, `CliTest.session...` | COMPLETE |
 | 29 | Branch at any step boundary sharing the prefix by reference | `TimelineManager`; `LawsTest.m6` | COMPLETE |

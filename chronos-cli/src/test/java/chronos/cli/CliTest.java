@@ -162,6 +162,21 @@ class CliTest {
     }
 
     @Test
+    void localReplayReExecutesEachNodeAloneFromItsRecordedInputs() {
+        cli("run", "re", "--no-stop", "--fault", "skew:b:100:500:200");
+        R all = cli("local-replay", "T0");
+        assertEquals(0, all.code(), all.err());
+        assertTrue(all.out().contains("NODE-LOCAL REPLAY of p on T0: OK") && all.out().contains("NODE-LOCAL REPLAY of b on T0: OK") && all.out().contains("outputs and every post-step state digest matched"), all.out());
+        R one = cli("local-replay", "T0", "b");
+        assertEquals(0, one.code());
+        assertFalse(one.out().contains("NODE-LOCAL REPLAY of p"));
+        cli("run", "bad", "--seed", "3");
+        R bad = cli("local-replay", "T1");
+        assertEquals(1, bad.code(), "hidden nondeterminism is a failing exit code");
+        assertTrue(bad.out().contains("MISMATCH"), bad.out());
+    }
+
+    @Test
     void searchRanksTheSingleChangesThatMakeTheFailureDisappear() {
         cli("run", "re");
         R r = cli("search", "T0", "--max", "40", "--threads", "2");

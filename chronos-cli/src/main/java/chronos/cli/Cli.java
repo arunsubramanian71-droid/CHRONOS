@@ -43,6 +43,7 @@ final class Cli {
                                 [--reseed NODE:STREAM:SEED] [--patch-state NODE:volatile.field=VALUE (synthetic)]...   run a what-if, print the verdict
               compare <A> <B> [--strict]                  first causal divergence, cone and explanation path
               causes <timeline> [--max-size K] [--threads N]    which fault rules are critical (combinations)
+              local-replay <timeline> [node]      re-execute one node (or each node) alone from its recorded inputs and check its outputs (R5)
               search <timeline> [--max N] [--threads N] [--keep]   intervention search: which single changes to the causal past make the failure disappear
               campaign <scenario> --seeds A-B [--threads N] [--chaos] [--param k=v]... [--keep]
               report <timeline> [--against B] [--out FILE]  static self-contained HTML report
@@ -99,6 +100,7 @@ final class Cli {
             case "compare" -> compare(args);
             case "causes" -> causes(args);
             case "search" -> search(args);
+            case "local-replay" -> localReplay(args);
             case "campaign" -> campaign(args);
             case "report" -> report(args);
             case "delete" -> {
@@ -642,6 +644,19 @@ final class Cli {
         for (Map.Entry<String, Integer> en : g.frontier(cut).entrySet()) sb.append("    ").append(en.getKey()).append(": ").append(g.event(en.getValue()).eventId()).append(" at t=").append(g.event(en.getValue()).virtualTime()).append('\n');
         sb.append("  consistent: ").append(g.isConsistentCut(cut)).append('\n');
         return sb.toString();
+    }
+
+    private int localReplay(Args a) {
+        String tl = a.positional(0, "timeline");
+        NodeLocalReplay nlr = new NodeLocalReplay(store, registry);
+        List<String> nodes = a.positionalCount() > 1 ? List.of(a.positional(1, "node")) : store.header(tl).nodes();
+        int bad = 0;
+        for (String n : nodes) {
+            NodeLocalReplay.Result r = nlr.replay(tl, n);
+            out.print(r.text());
+            if (!r.ok()) bad++;
+        }
+        return bad == 0 ? 0 : 1;
     }
 
     private int search(Args a) {
