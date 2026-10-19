@@ -67,7 +67,7 @@ Full matrix: `docs/TRACEABILITY.md`. The important ones:
 ## Deviations from the specification
 
 Interpretations, extensions, semantics for the later catalogue items and simplifications are recorded in `docs/DEVIATIONS.md`
-(DEV-01 to DEV-37). The ones a reviewer should look at first: **DEV-03** (OMISSION scope for partitions also requires the node to have
+(DEV-01 to DEV-38). The ones a reviewer should look at first: **DEV-03** (OMISSION scope for partitions also requires the node to have
 heard from the other side), **DEV-02** (digest parent ids exclude PROGRAM_ORDER), **DEV-11** (heal-enabled FAULT edge), **DEV-10**
 (AD-4/AD-5 branch point).
 
