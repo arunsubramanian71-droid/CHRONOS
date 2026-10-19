@@ -144,7 +144,7 @@ java -jar chronos-bench/target/chronos-bench.jar jmh                           #
 java -jar chronos-bench/target/chronos-bench.jar eval --seeds 400              # evaluation on unplanned chaos failures (docs/EVALUATION.md)
 ```
 
-Measured results (and which targets of Section 8 were met or missed) are in [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md).
+Measured results (and which targets of Section 8 were met or missed) are in [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md). `tools/regenerate-results.sh` rebuilds, reruns the demo, the benchmarks and the evaluation and rewrites the generated documents (`--long` adds the long randomized campaigns).
 
 ## Where things are
 

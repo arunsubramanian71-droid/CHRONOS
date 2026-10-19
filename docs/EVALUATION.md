@@ -82,6 +82,29 @@ experiment, and consistent with the specification's own rules):
 So the right reading is: `why` is a precise explanation of *what happened*, the silence hint is a lead, and `causes` is the test of
 *what was necessary*, which reached 500 / 500 here without any hint.
 
+## Experiment: systematic exploration against random sampling at the same budget
+
+The three experiments above are random (chaos plans, randomised planted causes). This one separates *systematic* from random.
+`chronos explore` (DEV-44) enumerates every subset of at most two faults from a generated candidate space (a crash and a pause of every node,
+a partition of every communicating pair, a drop of the first two messages of every observed link, at 30, 100 and 300 ms), runs each
+deterministically and reports the **minimal** violating schedules; every one of them was then re-verified independently (it violates, and
+no proper subset does). A random baseline draws the same number of schedules from the same space (fixed seed) and counts how many of the
+minimal sets it happened to run.
+
+| Scenario (candidates) | schedules in the bound | executed | duplicate traces | pruned supersets | minimal violating sets (re-verified) | random sampling, same budget, hit |
+|---|---|---|---|---|---|---|
+| RE, no planted partition (34) | 596 | 531 | 39 | 65 | **7 of 7 minimal** | 2 of 7 |
+| RE with two backups (47) | 1,129 | 828 | 39 | 301 | **17 of 17 minimal** | 9 of 17 |
+| KA-2 lost update, no planted delay (30) | 466 | 409 | 26 | 57 | **3 of 3 minimal** | 3 of 3 |
+| KA-3 blocked commit, no planted crash (40) | 821 | 476 | 27 | 345 | **12 of 12 minimal** | 10 of 12 |
+| KA-0 control (17) | 154 | 154 | 19 | 0 | **0 violations: the whole bound is clean** | 0 of 0 |
+
+What it shows: exhaustiveness *within the bound* (the explorer ran the whole space; random sampling at the same cost missed 5 of 7 minimal
+causes in RE) and a statement random testing cannot make (KA-0: none of 154 schedules violates). What it does not show: anything outside the
+bound (other fault kinds, larger subsets, other times, other seeds, message interleavings the simulator does not vary), or that the
+candidate space was the right one. The explorer is deterministic: the same configuration gives a byte-identical report (`SystematicExplorerTest`).
+Regenerate everything with `tools/regenerate-results.sh`.
+
 ## Limits of this evaluation (honest)
 
 * **Not blind.** The same author wrote the scenarios, the fault generator, the case kit and the analysers (this applies to both experiments). The blind debugging protocol of Section 25

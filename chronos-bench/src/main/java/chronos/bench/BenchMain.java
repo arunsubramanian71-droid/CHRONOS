@@ -52,6 +52,7 @@ public final class BenchMain {
         } else if (cmd.equals("eval")) {
             evaluate(Integer.parseInt(opt(a, "--seeds", "400")));
             evaluatePlanted(Integer.parseInt(opt(a, "--tokens", "500")));
+            evaluateExploration();
         } else if (cmd.equals("xl")) {
             millionEvents(10);
             millionEvents(20);
@@ -872,5 +873,61 @@ public final class BenchMain {
         }
         row("EVAL-PLANTED", "Randomised planted causes diagnosed from the recording alone", "all " + tokens + " tokens", "exact match with the planted set", all[1] + "/" + all[0], "", "", "cases",
                 "`why` " + all[1] + "/" + all[0] + ", `why` + silence " + all[4] + "/" + all[0] + ", `causes` " + all[2] + "/" + all[0] + "; mean diagnosis time " + fmt(nanos / 1e6 / tokens) + " ms; NOT blind: see docs/BLIND_PROTOCOL.md");
+    }
+
+    /**
+     * Systematic exploration against random sampling at the same budget. For each scenario the explorer enumerates every subset of at most
+     * two generated candidate faults; every minimal violating set it reports is re-verified independently (it violates, and no proper subset
+     * does). The random baseline draws the same number of subsets (with replacement, fixed seed) from the same space and counts how many of
+     * the minimal violating sets it happened to hit. Systematic exploration is exhaustive within the bound by construction; the experiment
+     * shows what that buys, not that it finds bugs outside the bound.
+     */
+    private static void evaluateExploration() {
+        SystematicExplorer ex = new SystematicExplorer(REG);
+        for (String[] sc : new String[][]{{"re", "partition=off"}, {"re2", "partition=off"}, {"ka2", "delay=off"}, {"ka3", "crash=off"}, {"control", ""}}) {
+            Map<String, String> params = sc[1].isEmpty() ? Map.of() : Map.of(sc[1].split("=")[0], sc[1].split("=")[1]);
+            List<SystematicExplorer.Candidate> cands = ex.generate(sc[0], params, 42, null, SystematicExplorer.Grid.standard(List.of(30L, 100L, 300L)));
+            SystematicExplorer.Config cfg = new SystematicExplorer.Config(sc[0], params, 42, null, FaultPlan.empty(), cands, 2, 1_000_000, false, true);
+            long t0 = System.nanoTime();
+            SystematicExplorer.Report rep = ex.explore(cfg);
+            double ms = (System.nanoTime() - t0) / 1e6;
+            // independent verification of every reported minimal set: it violates, and no proper subset does
+            Map<String, FaultRule> byName = new HashMap<>();
+            for (SystematicExplorer.Candidate c : cands) byName.put(c.name(), c.rule());
+            int verified = 0;
+            for (SystematicExplorer.Finding f : rep.findings()) {
+                boolean minimal = true;
+                for (int drop = 0; drop < f.faults().size(); drop++) {
+                    FaultPlan sub = FaultPlan.empty();
+                    for (int i = 0; i < f.faults().size(); i++) if (i != drop) sub = sub.with(byName.get(f.faults().get(i)));
+                    if (Recording.recordInMemory(REG, "Xv", Recording.Spec.of(sc[0], 42).withParams(params).withPlan(sub).withStopOnViolation(true).withCheckpointInterval(0)).result().violated()) minimal = false;
+                }
+                boolean violates = Recording.recordInMemory(REG, "Xv", Recording.Spec.of(sc[0], 42).withParams(params).withPlan(f.plan()).withStopOnViolation(true).withCheckpointInterval(0)).result().violated();
+                if (minimal && violates) verified++;
+            }
+            // random baseline at the same budget over the same space
+            SeededRandom rnd = new SeededRandom(2024);
+            Set<List<String>> minimalSets = new HashSet<>();
+            for (SystematicExplorer.Finding f : rep.findings()) minimalSets.add(f.faults());
+            long budget = rep.executed();
+            Set<List<String>> hit = new HashSet<>();
+            for (long i = 0; i < budget; i++) {
+                int size = (int) Math.floorMod(rnd.nextLong(), 3L); // 0..2 faults
+                TreeSet<Integer> pick = new TreeSet<>();
+                while (pick.size() < Math.min(size, cands.size())) pick.add((int) Math.floorMod(rnd.nextLong(), (long) cands.size()));
+                List<String> names = new ArrayList<>();
+                FaultPlan plan = FaultPlan.empty();
+                for (int c : pick) {
+                    names.add(cands.get(c).name());
+                    plan = plan.with(cands.get(c).rule());
+                }
+                if (Recording.recordInMemory(REG, "Xr", Recording.Spec.of(sc[0], 42).withParams(params).withPlan(plan).withStopOnViolation(true).withCheckpointInterval(0)).result().violated()
+                        && minimalSets.contains(names)) hit.add(names);
+            }
+            row("EVAL-EXPLORE", "Systematic exploration of fault schedules against random sampling at the same budget", sc[0] + " " + sc[1] + ", " + cands.size() + " candidates, <= 2 faults",
+                    "minimal violating sets found", rep.findings().size() + " (all " + verified + " re-verified minimal)", "", "", "sets",
+                    rep.totalSubsets() + " schedules, " + rep.executed() + " executed, " + rep.duplicateTraces() + " duplicate traces, " + rep.skippedAsSuperset() + " pruned, " + rep.termination()
+                            + " in " + fmt(ms) + " ms; random sampling of the same " + budget + " executions hit " + hit.size() + " of the " + minimalSets.size() + " minimal sets");
+        }
     }
 }
