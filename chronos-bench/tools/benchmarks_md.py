@@ -115,7 +115,7 @@ after a run stopped did not remember the stop). All were fixed; see `docs/DEVIAT
 
 ## Honest limits
 
-* **Not run:** B11 (intervention search; the feature is not implemented).
+* B11 (intervention search) is measured on the two small failing demos only; the cost is one branch per suspect, so it grows linearly with the number of suspects (capped at 64 by default).
 * Wall-clock numbers vary run to run (the same 3-node vector-clock measurement read 28 ns, 29 ns, 70 ns and 71 ns in four full runs of
   the harness; the JMH figure is the steadier one), and the replay ratios above sit well under 2x but are not guaranteed on other hardware.
 * `world()` starts from the nearest checkpoint and folds only the events after it; the equivalence with a full fold from event 0 is

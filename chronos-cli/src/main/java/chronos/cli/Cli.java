@@ -43,6 +43,7 @@ final class Cli {
                                 [--reseed NODE:STREAM:SEED] [--patch-state NODE:volatile.field=VALUE (synthetic)]...   run a what-if, print the verdict
               compare <A> <B> [--strict]                  first causal divergence, cone and explanation path
               causes <timeline> [--max-size K] [--threads N]    which fault rules are critical (combinations)
+              search <timeline> [--max N] [--threads N] [--keep]   intervention search: which single changes to the causal past make the failure disappear
               campaign <scenario> --seeds A-B [--threads N] [--chaos] [--param k=v]... [--keep]
               report <timeline> [--against B] [--out FILE]  static self-contained HTML report
               delete <timeline>                           delete a leaf timeline
@@ -97,6 +98,7 @@ final class Cli {
             case "branch", "counterfactual" -> branch(args);
             case "compare" -> compare(args);
             case "causes" -> causes(args);
+            case "search" -> search(args);
             case "campaign" -> campaign(args);
             case "report" -> report(args);
             case "delete" -> {
@@ -617,6 +619,13 @@ final class Cli {
         out.println("remove which fault rules to make the failure disappear? (each trial is a real counterfactual branch)");
         for (Map.Entry<Set<String>, Verdict> e : cs.tried().entrySet()) out.println("  remove " + e.getKey() + " -> " + e.getValue());
         out.println(cs.minimalCriticalSets().isEmpty() ? "no combination of up to " + a.num("max-size", 2) + " rules is critical" : "MINIMAL CRITICAL SETS: " + cs.minimalCriticalSets());
+        return 0;
+    }
+
+    private int search(Args a) {
+        String tl = a.positional(0, "timeline");
+        InterventionSearch.Result r = new InterventionSearch(manager).search(tl, (int) a.num("max", 64), (int) a.num("threads", 4), a.has("keep"));
+        out.print(r.text());
         return 0;
     }
 

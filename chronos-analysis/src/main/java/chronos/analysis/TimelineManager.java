@@ -32,6 +32,12 @@ public final class TimelineManager {
         this.replay = new ReplayEngine(store, registry);
     }
 
+    /** The scenario a timeline was recorded from (built from its header, as replay does). */
+    public Scenario scenarioOf(String timelineId) {
+        TimelineHeader h = store.header(timelineId);
+        return registry.create(h.scenario(), h.params());
+    }
+
     public TimelineManager withCheckpointInterval(long k) {
         this.checkpointInterval = k;
         return this;

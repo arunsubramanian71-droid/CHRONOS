@@ -147,6 +147,21 @@ class CliTest {
     }
 
     @Test
+    void searchRanksTheSingleChangesThatMakeTheFailureDisappear() {
+        cli("run", "re");
+        R r = cli("search", "T0", "--max", "40", "--threads", "2");
+        assertEquals(0, r.code(), r.err());
+        assertTrue(r.out().contains("INTERVENTION SEARCH on T0") && r.out().contains("CRITICAL") && r.out().contains("REMOVE_FAULT") && r.out().contains("partition-pb"), r.out());
+        assertTrue(r.out().contains("earliest critical event: fault:partition-pb#1"), r.out());
+        assertEquals("T0", cli("ls").out().lines().map(String::strip).filter(l -> l.startsWith("T0")).findFirst().orElse("").split(" ")[0], "no branches are left behind without --keep");
+        assertFalse(cli("ls").out().contains("T0.1"));
+        cli("run", "re", "--param", "partition=off");
+        R none = cli("search", "T1");
+        assertNotEquals(0, none.code());
+        assertTrue(none.err().contains("has no invariant violation"), none.err());
+    }
+
+    @Test
     void sessionCommandsReadFromStdinAndGoingLiveCreatesABranch() {
         cli("run", "re", "--no-stop");
         String script = String.join("\n", "goto violation", "why", "back 3", "world", "find kind=timer_fired node=b back", "watch b.volatile.role", "inflight", "timers",

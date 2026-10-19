@@ -80,7 +80,7 @@ Paths are relative to the module's `src/main/java/chronos/<package>/`.
 | 35 | Verdict, new timeline, divergence summary | `CounterfactualEngine`; `KnownAnswerTest` | COMPLETE (all five verdicts tested) |
 | 36 | Parallel isolated counterfactuals | `CounterfactualEngine.runAll`; `LawsTest.m12` | COMPLETE |
 | 37 | Seed campaign | `Campaign`, CLI `campaign`; `CliTest.campaign...` | COMPLETE |
-| 38 | Intervention search over the causal past | — (`findCriticalFaultSets` over fault rules only: DEV-14) | NOT IMPLEMENTED (Stretch) |
+| 38 | Intervention search over the causal past | `InterventionSearch` (analysis), CLI `search`, bench B11; `findCriticalFaultSets` for rule combinations (DEV-14) | SIMPLIFIED (Stretch): single-change but-for search over message drops, scripted-input removals and fault-rule removals in the causal past of the first violation (DEV-30); `KnownAnswerTest.interventionSearch_*`, `CliTest.searchRanks...` |
 | 39, 40 | Align by identity; classify; first local divergence | `TimelineComparator`; `ComparatorTest` | COMPLETE |
 | 41, 42 | Causal roots; first causal divergence; explanation path | `TimelineComparator`; `AcceptanceTest.ad5`, `ComparatorTest` | COMPLETE |
 | 43 | Flag suspected application nondeterminism | `TimelineComparator.classifyLocal`; `ComparatorTest.anOutputDifference...` | COMPLETE |
@@ -171,5 +171,5 @@ are each exercised in `KnownAnswerTest`.
 | 13b full counterfactuals | COMPLETE (whole intervention catalogue, parallel pool, campaigns on the pool); `DIFFERENT_FAILURE` simplified (DEV-08) |
 | 14b comparator hardening | COMPLETE (concurrent roots, absorbed divergence, suspected nondeterminism, KA-4) |
 | 15a static HTML report | COMPLETE |
-| 16 benchmarks | COMPLETE (`docs/BENCHMARKS.md`: B1-B10, B12-B14, a 1,018,235-event run with memory profile, a 10,000-seed chaos soak, NFR-01 at full size); B11 is moot because intervention search is not implemented |
+| 16 benchmarks | COMPLETE (`docs/BENCHMARKS.md`: B1-B14, a 1,018,235-event run with memory profile, a 10,000-seed chaos soak, NFR-01 at full size); B11 (intervention search) needs the harness re-run to be listed in BENCHMARKS.md |
 | 17 documentation, demonstrations, evaluation | PARTIAL: README, status, traceability, deviations, benchmarks, viva guide, demo script, sample report, demo transcript and an evaluation on 800 unplanned chaos runs (`docs/EVALUATION.md`) are written; the **blind debugging protocol** (needs a second person) is NOT DONE |

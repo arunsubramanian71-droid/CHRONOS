@@ -79,6 +79,48 @@ class KnownAnswerTest {
         assertNull(env.store.summary(env.last).firstViolationEventId());
     }
 
+    // ------------------------------------------------------------------------------------------ intervention search (FR-38)
+    @Test
+    void interventionSearch_findsThePlantedCauseAmongTheSuspectsAndEveryFindingIsARealBranch() {
+        Env env = new Env(tmp);
+        env.record("re", 42, Map.of());
+        String t0 = env.last;
+        InterventionSearch.Result r = new InterventionSearch(env.manager).search(t0, 64, 4, true);
+        System.out.println(r.text());
+        assertTrue(r.suspectsFound() >= 3 && r.suspectsTried() == r.suspectsFound());
+        List<InterventionSearch.Finding> crit = r.critical();
+        assertFalse(crit.isEmpty(), "something in RE's causal past is critical");
+        // the planted cause (the partition rule) is critical; dropping single messages does not cure split brain
+        assertTrue(crit.stream().anyMatch(f -> f.suspect().kind() == InterventionSearch.SuspectKind.FAULT_RULE && f.suspect().intervention().params().get("ruleId").equals("partition-pb")), r.text());
+        // ranking: critical first, then closest to the violation first
+        for (int i = 1; i < crit.size(); i++) assertTrue(crit.get(i - 1).suspect().distance() <= crit.get(i).suspect().distance());
+        // each finding is a branch that exists, replays and has the verdict claimed
+        for (InterventionSearch.Finding f : r.findings()) {
+            String child = f.report().timelineId();
+            assertTrue(new ReplayEngine(env.store, env.registry).verify(child).ok(), "branch " + child + " must replay");
+            assertEquals(f.report().verdict(), new CounterfactualEngine(env.manager).assess(t0, child).verdict());
+        }
+        // the search is deterministic
+        Env env2 = new Env(tmp.resolve("again"));
+        env2.record("re", 42, Map.of());
+        assertEquals(r.text(), new InterventionSearch(env2.manager).search(env2.last, 64, 1, false).text());
+        // a run without a violation has nothing to search for
+        env.record("re", 42, Map.of("partition", "off"));
+        String ok = env.last;
+        assertThrows(IllegalArgumentException.class, () -> new InterventionSearch(env.manager).suspects(ok));
+    }
+
+    @Test
+    void interventionSearch_onTheLostUpdateNamesTheDelayedReplicateAndTheClientWrites() {
+        Env env = new Env(tmp);
+        env.record("ka2", 1, Map.of());
+        InterventionSearch.Result r = new InterventionSearch(env.manager).search(env.last, 64, 4, false);
+        assertTrue(r.critical().stream().anyMatch(f -> f.suspect().kind() == InterventionSearch.SuspectKind.FAULT_RULE
+                && f.suspect().intervention().params().get("ruleId").equals("delay-first-replicate")), r.text());
+        assertTrue(r.findings().stream().anyMatch(f -> f.suspect().kind() == InterventionSearch.SuspectKind.CLIENT_INPUT), "scripted client inputs are suspects too");
+        assertEquals(List.of(), env.store.timelineIds().stream().filter(id -> !id.equals("T0")).toList(), "branches are removed unless --keep");
+    }
+
     // ------------------------------------------------------------------------------------------ KA-2 lost update
     @Test
     void ka2_lostUpdate_rootIsTheDelayAndTheButForTestConfirmsIt() {

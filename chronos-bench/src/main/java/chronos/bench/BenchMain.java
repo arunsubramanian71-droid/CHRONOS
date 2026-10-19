@@ -59,6 +59,7 @@ public final class BenchMain {
             replaySpeed(quick ? new int[]{10_000} : new int[]{10_000, 100_000});
             branching(quick ? 20_000 : 100_000);
             counterfactualThreads();
+            interventionSearch();
             slowDisk(quick ? 5_000 : 20_000);
             if (xl) millionEvents();
             demoTime();
@@ -499,6 +500,37 @@ public final class BenchMain {
     private static long usedMemory() {
         Runtime rt = Runtime.getRuntime();
         return rt.totalMemory() - rt.freeMemory();
+    }
+
+    // ------------------------------------------------------------------------------------------------------------
+    // B11: intervention search
+    // ------------------------------------------------------------------------------------------------------------
+
+    private static void interventionSearch() throws IOException {
+        Path d = tempDir("chronos-b11-");
+        try {
+            TimelineStore store = new TimelineStore(d);
+            TimelineManager mgr = new TimelineManager(store, REG);
+            Recording.record(store, REG, "T0", Recording.Spec.of("re", 42));
+            Recording.record(store, REG, "T1", Recording.Spec.of("ka2", 1));
+            for (String tl : List.of("T0", "T1")) {
+                for (int threads : new int[]{1, 4}) {
+                    int[] tried = {0}, crit = {0};
+                    Stats s = Stats.measure(reps, () -> {
+                        long t = System.nanoTime();
+                        InterventionSearch.Result r = new InterventionSearch(mgr).search(tl, 64, threads, false);
+                        double ms = (System.nanoTime() - t) / 1e6;
+                        tried[0] = r.suspectsTried();
+                        crit[0] = r.critical().size();
+                        return ms;
+                    });
+                    row("B11", "How long does intervention search take?", (tl.equals("T0") ? "RE" : "lost update") + ", " + store.events(tl).size() + " events, " + threads + " thread(s)",
+                            "search time", s, "ms", tried[0] + " real counterfactual branches tried, " + crit[0] + " critical");
+                }
+            }
+        } finally {
+            deleteTree(d);
+        }
     }
 
     // ------------------------------------------------------------------------------------------------------------
