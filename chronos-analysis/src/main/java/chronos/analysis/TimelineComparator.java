@@ -268,10 +268,11 @@ public final class TimelineComparator {
         }
     }
 
-    /** Orders roots by (virtual time, node order with env last, event id); within one timeline a root that happened before another comes first. */
+    /** Orders roots by (virtual time, node order with env last, intervention events first, event id); within one timeline a root that happened before another comes first. */
     private static List<Root> orderRoots(List<Root> roots, List<String> nodeOrder, CausalGraph ga, CausalGraph gb) {
         Comparator<Root> key = Comparator.comparingLong(Root::virtualTime)
                 .thenComparingInt(r -> nodeOrder.indexOf(r.nodeId()))
+                .thenComparingInt(r -> r.eventId().startsWith("iv:") ? 0 : 1) // DEV-36: at equal time and node the intervention's own event is first (M10)
                 .thenComparing(Root::eventId)
                 .thenComparing(Root::side);
         List<Root> remaining = new ArrayList<>(roots);

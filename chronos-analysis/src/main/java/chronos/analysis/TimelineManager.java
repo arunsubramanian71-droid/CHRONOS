@@ -82,14 +82,40 @@ public final class TimelineManager {
         return false;
     }
 
-    /** The largest step boundary at or before a position: "a world can only be restored between steps" (Section 17 rule 2). */
+    /**
+     * The first position at which a world can be restored: the end of the boot sequence (every NODE_STARTED, then the effects
+     * of the start handlers). Group boundaries inside the boot sequence are commit points of the log but not worlds: only some
+     * nodes have started there. Found from the causal structure: a boot event is a NODE_STARTED or an effect (not a fault, not an
+     * intervention) whose step trigger is a NODE_STARTED.
+     */
+    public long bootEnd(String timelineId) {
+        List<Event> es = store.events(timelineId);
+        Set<String> starts = new HashSet<>();
+        long end = -1;
+        for (Event e : es) {
+            boolean boot;
+            if (e.kind() == EventKind.NODE_STARTED) {
+                starts.add(e.eventId());
+                boot = true;
+            } else {
+                boot = e.kind() != EventKind.FAULT_INJECTED && e.kind() != EventKind.FAULT_CLEARED && e.kind() != EventKind.INTERVENTION_APPLIED
+                        && e.parents().stream().anyMatch(p -> p.kind() == EdgeKind.STEP_EFFECT && starts.contains(p.id()));
+            }
+            if (!boot) break;
+            end = e.seq();
+        }
+        return end;
+    }
+
+    /** The largest step boundary at or before a position at which a world can be restored (not inside the boot sequence): "a world can only be restored between steps" (Section 17 rule 2). */
     public long roundToBoundary(String timelineId, long atSeq) {
         long best = -1;
+        long boot = bootEnd(timelineId);
         for (long e : store.groupEnds(timelineId)) {
-            if (e <= atSeq) best = e;
-            else break;
+            if (e <= atSeq && e >= boot) best = e;
+            else if (e > atSeq) break;
         }
-        if (best < 0) throw new IllegalArgumentException("position " + atSeq + " is before the first step boundary of " + timelineId);
+        if (best < 0) throw new IllegalArgumentException("position " + atSeq + " is before the first step boundary of " + timelineId + " at which a world exists (" + boot + ", the end of the boot sequence)");
         return best;
     }
 

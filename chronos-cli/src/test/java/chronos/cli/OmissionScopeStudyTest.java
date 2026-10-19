@@ -22,7 +22,11 @@ class OmissionScopeStudyTest {
     private record Outcome(String t0, long omissionEdges, Set<String> omissionOnNodes, DivergenceReport report, Set<String> affected) {}
 
     private Outcome run(String mode) {
-        Env env = new Env(tmp.resolve(mode));
+        return run(mode, false);
+    }
+
+    private Outcome run(String mode, boolean heal) {
+        Env env = new Env(tmp.resolve(mode + heal));
         env.record("re", 42, mode.equals("literal") ? Map.of("omission", "literal") : Map.of(), null, Boolean.FALSE);
         String t0 = env.last;
         List<Event> ev = env.events(t0);
@@ -35,7 +39,7 @@ class OmissionScopeStudyTest {
                     nodes.add(e.nodeId());
                 }
         long at = env.manager.roundToBoundary(t0, ev.stream().filter(e -> e.eventId().equals("fault:partition-pb#1")).findFirst().orElseThrow().seq() - 1);
-        var br = env.manager.branch(t0, at, List.of(Intervention.removeFault("rm", "partition-pb")), null, null);
+        var br = env.manager.branch(t0, at, List.of(heal ? Intervention.shiftHeal("rm", "partition-pb", -200) : Intervention.removeFault("rm", "partition-pb")), null, null);
         DivergenceReport d = new TimelineComparator(env.store).compare(t0, br.timelineId(), false);
         return new Outcome(t0, edges, nodes, d, new TreeSet<>(d.affectedNodes()));
     }
@@ -50,13 +54,19 @@ class OmissionScopeStudyTest {
         assertEquals(Set.of("b", "p"), literal.omissionOnNodes(), "p's own heartbeat timers wait for nothing from b, yet get OMISSION edges");
         // what does NOT change: the answer to the headline question
         assertEquals(refined.report().primary().eventId(), literal.report().primary().eventId());
-        assertEquals("fault:partition-pb#1", literal.report().primary().eventId());
+        assertEquals("iv:rm", literal.report().primary().eventId(), "the intervention is first (M10); the removed partition is the other root");
+        assertTrue(literal.report().roots().stream().anyMatch(r -> r.eventId().equals("fault:partition-pb#1")));
         assertEquals(refined.report().path().stream().map(DivergenceReport.Hop::from).toList(), literal.report().path().stream().map(DivergenceReport.Hop::from).toList());
-        // what changes: the comparison blames the partition for changes on p that the intervention does not really cause
+        // what changes: the comparison reports p, which the intervention does not really touch, as affected
         assertEquals(Set.of("b", "env"), refined.affected());
         assertEquals(Set.of("b", "env", "p"), literal.affected());
-        assertTrue(literal.report().roots().size() > refined.report().roots().size(), "literal adds a spurious root on p");
-        assertTrue(literal.report().coneA() > refined.report().coneA());
+        assertTrue(literal.report().coneA() > refined.report().coneA(), "the divergence cone grows to include p's heartbeats");
+        assertTrue(literal.report().coneB() > refined.report().coneB());
+        // the heal-earlier counterfactual of AD-4/AD-5 shows the same
+        Outcome refinedHeal = run("refined", true), literalHeal = run("literal", true);
+        assertEquals(Set.of("b", "env"), refinedHeal.affected());
+        assertEquals(Set.of("b", "env", "p"), literalHeal.affected());
+        assertEquals(refinedHeal.report().path().stream().map(DivergenceReport.Hop::from).toList(), literalHeal.report().path().stream().map(DivergenceReport.Hop::from).toList());
     }
 
     @Test

@@ -633,7 +633,7 @@ final class Cli {
                 for (Event e : es) if (e.virtualTime() < at) last = e.seq();
                 yield last;
             }
-            case Intervention.REMOVE_INPUT -> es.get(0).seq();
+            case Intervention.REMOVE_INPUT -> manager.bootEnd(tl);
             case Intervention.SWAP_DELIVERIES -> {
                 long last = 0;
                 for (Event e : es) if (e.eventId().equals(iv.params().get("a")) || e.eventId().equals(iv.params().get("b"))) last = Math.max(last, e.seq());

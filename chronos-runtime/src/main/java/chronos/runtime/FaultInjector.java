@@ -24,6 +24,10 @@ final class FaultInjector {
     private final Map<String, String> reorderPending = new TreeMap<>();  // REORDER rule -> the armed (n-th) message id
     private final Set<String> triggered = new TreeSet<>();               // AFTER_EVENT rules already scheduled
     private final Map<String, Long> shifts = new TreeMap<>();            // partition rule -> how many ms an intervention lengthened it
+    private final Map<String, FaultRule> ghosts = new LinkedHashMap<>(); // rules an intervention removed: they still match (to link what they would have changed to the intervention) but do nothing
+    private final Map<String, Ref> laneMarks = new TreeMap<>();          // node -> intervention whose removal displaces that node's next event
+    private final Map<String, Long> ghostStarts = new TreeMap<>();      // removed AFTER_EVENT rules: when their trigger event happened in this run (their would-be start)
+    private List<Ref> ghostRefs = new ArrayList<>();
 
     FaultInjector(FaultPlan plan) {
         for (FaultRule r : plan.rules()) addRule(r, null);
@@ -46,6 +50,127 @@ final class FaultInjector {
         firings.remove(id);
         origins.remove(id);
         origins.remove(id + "/clear");
+    }
+
+    /** Keeps a removed rule as a ghost (see {@link #ghosts}): the kinds whose effect on a later event can be traced are message rules, partitions, crashes and pauses. */
+    void ghost(FaultRule r, String ivEventId) {
+        ghosts.put(r.id(), r);
+        origins.put("ghost:" + r.id(), ivEventId);
+    }
+
+    /** A removed rule that waits for a named event: remember when that event happens, which is when the rule would have fired. */
+    void ghostTrigger(String eventId, long now) {
+        for (FaultRule g : ghosts.values())
+            if (g.trigger() == FaultRule.TriggerType.AFTER_EVENT && eventId.equals(g.str("event")) && !ghostStarts.containsKey(g.id())) ghostStarts.put(g.id(), now);
+    }
+
+    /** The instant at which a removed rule's already-scheduled firing would have happened (its trigger event was before the branch point). */
+    void ghostStart(String ruleId, long at) {
+        ghostStarts.putIfAbsent(ruleId, at);
+    }
+
+    private static Long startOf(FaultRule g, Map<String, Long> ghostStarts) {
+        if (g.params().containsKey("at")) return g.num("at");
+        return ghostStarts.get(g.id());
+    }
+
+    void markLane(String node, Ref iv) {
+        laneMarks.put(node, iv);
+    }
+
+    /** The intervention whose removal displaced this node's next event, once; null if none. */
+    Ref takeLaneMark(String node) {
+        return laneMarks.isEmpty() ? null : laneMarks.remove(node);
+    }
+
+    /** The interventions whose removed message rules would have matched the message just passed to matchSend. */
+    List<Ref> takeGhostRefs() {
+        List<Ref> r = ghostRefs;
+        ghostRefs = new ArrayList<>();
+        return r;
+    }
+
+    /** Interventions that removed a partition which, in the original run, would have cut from-to at this moment. */
+    List<Ref> ghostPartitionRefs(String from, String to, long now) {
+        if (ghosts.isEmpty()) return List.of();
+        List<Ref> out = new ArrayList<>();
+        for (FaultRule g : ghosts.values()) {
+            if (g.action() != FaultRule.FaultAction.PARTITION) continue;
+            Long start = startOf(g, ghostStarts);
+            if (start == null) continue;
+            Long dur = g.params().containsKey("duration") ? g.num("duration") : null;
+            if (now < start || (dur != null && now >= start + dur)) continue;
+            int gf = -1, gt = -1, i = 0;
+            for (Object grp : Canon.list(g.params().get("groups"))) {
+                List<Object> members = Canon.list(grp);
+                if (members.contains(from)) gf = i;
+                if (members.contains(to)) gt = i;
+                i++;
+            }
+            Ref iv = ivRef(origins.get("ghost:" + g.id()));
+            if (gf >= 0 && gt >= 0 && gf != gt && iv != null) out.add(iv);
+        }
+        return out;
+    }
+
+    /**
+     * Interventions that removed a fault which, in the original run, would have given a timer firing an OMISSION edge (D-23): the
+     * same test as {@link #omissionSources}, applied to the removed rules' would-be windows. The firing differs from the original
+     * only by that missing edge, and the intervention is why.
+     */
+    List<Ref> ghostOmissionRefs(NodeSlot slot, long setAt, long fireAt) {
+        if (ghosts.isEmpty()) return List.of();
+        List<Ref> out = new ArrayList<>();
+        for (FaultRule g : ghosts.values()) {
+            Ref iv = ivRef(origins.get("ghost:" + g.id()));
+            if (iv == null) continue;
+            ActiveFault f;
+            Long gs = startOf(g, ghostStarts);
+            if (gs == null && g.action() != FaultRule.FaultAction.RESTART) continue; // the rule's trigger has not happened (yet): it would not have fired
+            switch (g.action()) {
+                case CRASH -> {
+                    long start = gs;
+                    Long end = null;
+                    List<FaultRule> restarts = new ArrayList<>(rules.values());
+                    restarts.addAll(ghosts.values());
+                    for (FaultRule r : restarts) {
+                        Long rs = startOf(r, ghostStarts);
+                        if (r.action() == FaultRule.FaultAction.RESTART && g.str("node").equals(r.str("node")) && rs != null && rs >= start && (end == null || rs < end)) end = rs;
+                    }
+                    f = new ActiveFault("crash", g.id(), iv, start, end, List.of(), g.str("node"));
+                }
+                case PAUSE -> f = new ActiveFault("pause", g.id(), iv, gs, gs + g.num("duration"), List.of(), g.str("node"));
+                case PARTITION -> {
+                    List<List<String>> groups = new ArrayList<>();
+                    for (Object grp : Canon.list(g.params().get("groups"))) {
+                        List<String> members = new ArrayList<>();
+                        for (Object o : Canon.list(grp)) members.add((String) o);
+                        groups.add(members);
+                    }
+                    f = new ActiveFault("partition", g.id(), iv, gs, g.params().containsKey("duration") ? gs + g.num("duration") : null, groups, null);
+                }
+                default -> { continue; }
+            }
+            if (f.start > fireAt || (f.end != null && f.end <= setAt)) continue;
+            if (touches(slot, f) && !out.contains(iv)) out.add(iv);
+        }
+        // a crash that is still in force only because an intervention removed the restart that ended it
+        for (ActiveFault c : active) {
+            if (!c.kind.equals("crash") || !touches(slot, c)) continue;
+            Ref iv = restartRemovedRef(c.node, c.start, fireAt);
+            if (iv != null && !out.contains(iv)) out.add(iv);
+        }
+        return out;
+    }
+
+    /** The intervention that removed a RESTART of this node which, in the original run, would have happened between a crash's start and now; or null. */
+    Ref restartRemovedRef(String node, long crashStart, long now) {
+        for (FaultRule g : ghosts.values()) {
+            if (g.action() != FaultRule.FaultAction.RESTART || !node.equals(g.str("node"))) continue;
+            Long at = startOf(g, ghostStarts);
+            if (at != null && at >= crashStart && at <= now) return ivRef(origins.get("ghost:" + g.id()));
+        }
+        return null;
     }
 
     FaultRule rule(String id) {
@@ -83,8 +208,20 @@ final class FaultInjector {
     }
 
     /** Message-triggered rules that match a message being sent. Counts the sender's ordinal first (checkpointed state). */
-    List<FaultRule> matchSend(String msgId, String from, String to, String type, DecisionSource ds) {
+    List<FaultRule> matchSend(String msgId, String from, String to, String type, DecisionSource ds, long seed, long now) {
         long ord = ordinals.merge(from + ">" + to + "|" + type, 1L, Long::sum);
+        for (FaultRule g : ghosts.values()) { // a removed rule that would have hit this message: remember its intervention (decided by pure identity hashing, never by the decision source)
+            boolean hit = switch (g.trigger()) {
+                case ON_MESSAGE_ID -> msgId.equals(g.str("messageId"));
+                case ON_NTH_MESSAGE -> matches(g, from, to, type) && ord == g.num("n");
+                case PROBABILISTIC -> matches(g, from, to, type) && chronos.model.IdentityHash.bounded(seed, 1000, "prob", g.id(), msgId) < g.num("perMille");
+                case AT_TIME -> g.action() == FaultRule.FaultAction.SLOW_LINK && wild(g.str("sender"), from) && wild(g.str("receiver"), to) && now >= g.num("at")
+                        && (!g.params().containsKey("duration") || now < g.num("at") + g.num("duration")); // a slow link an intervention removed would have slowed this message
+                default -> false;
+            };
+            Ref iv = hit ? ivRef(origins.get("ghost:" + g.id())) : null;
+            if (iv != null) ghostRefs.add(iv);
+        }
         List<FaultRule> hit = new ArrayList<>();
         for (FaultRule r : rules.values()) {
             switch (r.trigger()) {
@@ -266,6 +403,17 @@ final class FaultInjector {
         m.put("reorderPending", reorderPending);
         m.put("triggered", new ArrayList<>(triggered));
         m.put("shifts", shifts);
+        if (!ghosts.isEmpty()) {
+            List<Object> gl = new ArrayList<>();
+            for (FaultRule r : ghosts.values()) gl.add(r.toMap());
+            m.put("ghosts", gl);
+        }
+        if (!ghostStarts.isEmpty()) m.put("ghostStarts", ghostStarts);
+        if (!laneMarks.isEmpty()) {
+            Map<String, Object> lm = new TreeMap<>();
+            for (Map.Entry<String, Ref> e : laneMarks.entrySet()) lm.put(e.getKey(), e.getValue().toMap());
+            m.put("laneMarks", lm);
+        }
         return m;
     }
 
@@ -283,6 +431,12 @@ final class FaultInjector {
         for (Object o : Canon.list(m.get("history"))) fi.history.add(ActiveFault.fromMap(Canon.map(o)));
         if (m.containsKey("reorderPending")) for (Map.Entry<String, Object> e : Canon.map(m.get("reorderPending")).entrySet()) fi.reorderPending.put(e.getKey(), (String) e.getValue());
         if (m.containsKey("triggered")) for (Object o : Canon.list(m.get("triggered"))) fi.triggered.add((String) o);
+        if (m.containsKey("ghosts")) for (Object o : Canon.list(m.get("ghosts"))) {
+            FaultRule r = FaultRule.fromMap(Canon.map(o));
+            fi.ghosts.put(r.id(), r);
+        }
+        if (m.containsKey("ghostStarts")) for (Map.Entry<String, Object> e : Canon.map(m.get("ghostStarts")).entrySet()) fi.ghostStarts.put(e.getKey(), Canon.num(e.getValue()));
+        if (m.containsKey("laneMarks")) for (Map.Entry<String, Object> e : Canon.map(m.get("laneMarks")).entrySet()) fi.laneMarks.put(e.getKey(), Ref.fromMap(Canon.map(e.getValue())));
         if (m.containsKey("shifts")) for (Map.Entry<String, Object> e : Canon.map(m.get("shifts")).entrySet()) fi.shifts.put(e.getKey(), Canon.num(e.getValue()));
         return fi;
     }

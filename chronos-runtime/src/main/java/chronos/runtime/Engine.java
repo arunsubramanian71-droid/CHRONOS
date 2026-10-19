@@ -317,11 +317,13 @@ public final class Engine {
 
     /** AFTER_EVENT triggers: a rule fires immediately after the event it names has been recorded. */
     private void scanAfterEvents(List<Event> group) {
-        for (Event e : group)
+        for (Event e : group) {
+            faults.ghostTrigger(e.eventId(), time);
             for (FaultRule r : faults.afterEvent(e.eventId())) {
                 faults.markTriggered(r.id());
                 agenda.add(new AgendaItem(time, envIdx, AgendaItem.Kind.FAULT, r.id() + "#inject", mapOf("rule", r.id(), "op", "INJECT", "cause", e.ref().toMap())));
             }
+        }
     }
 
     /** Runs to the end of the run and returns its result. */
@@ -364,6 +366,9 @@ public final class Engine {
             List<Link> links = envBase();
             links.add(new Link(sendRef, EdgeKind.MESSAGE));
             if (t.crashRef != null) links.add(new Link(t.crashRef, EdgeKind.FAULT));
+            ActiveFault crashFault = faults.activeCrash(t.name);
+            Ref removedRestart = crashFault == null ? null : faults.restartRemovedRef(t.name, crashFault.start, time);
+            if (removedRestart != null) links.add(new Link(removedRestart, EdgeKind.FAULT)); // dropped only because an intervention removed the restart
             group.add(emitEnv(dropId, EventKind.MESSAGE_DROPPED, mapOf("messageId", msgId, "reason", "target down"), links, null));
             return null;
         }
@@ -383,6 +388,7 @@ public final class Engine {
         List<Link> links = new ArrayList<>();
         if (t.last != null) links.add(new Link(t.last, EdgeKind.PROGRAM_ORDER));
         links.add(new Link(sendRef, EdgeKind.MESSAGE));
+        for (Ref r : faults.ghostPartitionRefs(from, to, time)) links.add(new Link(r, EdgeKind.FAULT)); // delivered only because an intervention removed the partition
         for (Object o : Canon.list(d.get("faultRefs"))) links.add(new Link(Ref.fromMap(Canon.map(o)), EdgeKind.FAULT));
         // a message sent while a partition cut its link, and delivered only because the partition healed, was altered by the heal
         if (d.containsKey("sentAt"))
@@ -406,6 +412,7 @@ public final class Engine {
         if (s.last != null) links.add(new Link(s.last, EdgeKind.PROGRAM_ORDER));
         links.add(new Link(pt.setRef(), EdgeKind.TIMER));
         for (ActiveFault f : faults.omissionSources(s, pt.setAt(), time)) links.add(new Link(f.ref, EdgeKind.OMISSION));
+        for (Ref r : faults.ghostOmissionRefs(s, pt.setAt(), time)) links.add(new Link(r, EdgeKind.FAULT)); // the OMISSION edge of a fault an intervention removed
         Event trig = emitNode(s, EventKind.TIMER_FIRED, mapOf("timerId", timerId, "name", pt.name()), links, null);
         group.add(trig);
         TimerFiring tf = new TimerFiring(timerId, pt.name());
@@ -706,6 +713,11 @@ public final class Engine {
 
     private Event emitNode(NodeSlot s, EventKind kind, Map<String, Object> payload, List<Link> links, String origin) {
         String id = s.name + "#" + (++s.counter);
+        Ref mark = faults.takeLaneMark(s.name);
+        if (mark != null) { // an intervention removed an event of this node, so this one takes its place in the lane: it is the intervention's consequence
+            links = new ArrayList<>(links);
+            links.add(new Link(mark, EdgeKind.FAULT));
+        }
         Event e = build(id, s.idx, s.name, kind, payload, links, origin);
         s.last = e.ref();
         return e;
@@ -827,7 +839,7 @@ public final class Engine {
             long latency = decisions.latency(id, slot.name, to, type, time);
             if (latency < 0) throw new IllegalStateException("negative latency for message " + id);
             long deliverAt = time + latency;
-            List<FaultRule> hits = faults.matchSend(id, slot.name, to, type, decisions);
+            List<FaultRule> hits = faults.matchSend(id, slot.name, to, type, decisions, seed, time);
             Event send = emitNode(slot, EventKind.MESSAGE_SENT, mapOf("to", to, "type", type, "body", nbody, "deliverAt", deliverAt), effectLinks(), null);
             sink.add(send);
             Ref sref = send.ref();
@@ -844,7 +856,7 @@ public final class Engine {
                 return id;
             }
             long due = deliverAt;
-            List<Ref> faultRefs = new ArrayList<>();
+            List<Ref> faultRefs = new ArrayList<>(faults.takeGhostRefs()); // an intervention removed a rule that would have changed this message
             String origin = null;
             List<Ref> dupRefs = new ArrayList<>();
             List<Long> dupCopies = new ArrayList<>();
@@ -998,11 +1010,16 @@ public final class Engine {
                 if (r == null) throw new IllegalArgumentException("intervention " + iv.id() + ": unknown fault rule " + ruleId);
                 if (r.action() == FaultRule.FaultAction.CRASH && faults.activeCrash(r.str("node")) != null)
                     throw new IllegalArgumentException("intervention " + iv.id() + ": the crash of " + r.str("node") + " already happened and cannot be removed");
+                AgendaItem pending = agenda.find(i -> i.kind() == AgendaItem.Kind.FAULT && ruleId.equals(i.data().get("rule")) && "INJECT".equals(i.data().get("op")));
+                if (pending != null) faults.ghostStart(ruleId, pending.due()); // a rule triggered before the branch point but not yet fired: when it would have fired
                 agenda.removeIf(i -> i.kind() == AgendaItem.Kind.FAULT && ruleId.equals(i.data().get("rule")));
                 if (faults.activeByRule(ruleId) != null) { // an active partition heals, a paused node resumes, a skewed clock is restored, now
                     faults.setOrigin(ruleId + "/clear", origin);
                     doClear(r, group);
                 }
+                faults.ghost(r, iv.eventId());
+                if (r.params().containsKey("node") && (r.action() == FaultRule.FaultAction.CRASH || r.action() == FaultRule.FaultAction.PAUSE
+                        || r.action() == FaultRule.FaultAction.CLOCK_SKEW || r.action() == FaultRule.FaultAction.RESTART)) faults.markLane(r.str("node"), ivRef);
                 faults.removeRule(ruleId);
             }
             case Intervention.SHIFT_HEAL -> {
@@ -1133,6 +1150,8 @@ public final class Engine {
             }
             case Intervention.REMOVE_INPUT -> {
                 String ident = String.format("ci:%06d", Canon.num(p.get("index")));
+                AgendaItem gone = agenda.find(i -> i.kind() == AgendaItem.Kind.CLIENT_INPUT && i.identity().equals(ident));
+                if (gone != null) faults.markLane((String) gone.data().get("node"), ivRef);
                 if (!agenda.removeIf(i -> i.kind() == AgendaItem.Kind.CLIENT_INPUT && i.identity().equals(ident)))
                     throw new IllegalArgumentException("intervention " + iv.id() + ": there is no pending client input " + ident + " (it already happened or never existed)");
             }

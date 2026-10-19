@@ -11,7 +11,7 @@ It is implemented from the architecture contract `CHRONOS System Specification v
 Terms such as *Node API*, *event*, *step*, *timeline*, *intervention*, *OMISSION edge* and *first causal divergence* are used
 exactly as the specification defines them.
 
-> **Status in one paragraph.** All eight modules exist and build (verified on macOS and on Linux); 165 automated tests pass; the flagship
+> **Status in one paragraph.** All eight modules exist and build (verified on macOS and on Linux); 170 automated tests pass; the flagship
 > demonstration (acceptance demonstrations AD-1 to AD-6 and known-answer scenarios KA-0, KA-2, KA-3, KA-4 on the replicated store "RE")
 > runs from one command with 24 self-checks; the whole fault catalogue and the whole intervention catalogue of the specification are
 > implemented and tested. What is **not** done (for example the blind
@@ -160,4 +160,4 @@ Measured results (and which targets of Section 8 were met or missed) are in [`do
   (`docs/EVALUATION.md` evaluates the analysers on 800 unplanned chaos runs instead, and says what that does not show).
 * Verified on macOS (Apple Silicon, JDK 21) and on Linux (Ubuntu 24.04 in a container); **Windows is not verified**.
 * A counterfactual is evidence about the simulated world under CHRONOS's rules, not proof about reality (Section 19).
-* Interpretations and extensions of the specification are recorded as DEV-01 to DEV-34 in `docs/DEVIATIONS.md`.
+* Interpretations and extensions of the specification are recorded as DEV-01 to DEV-37 in `docs/DEVIATIONS.md`.

@@ -137,7 +137,7 @@ Paths are relative to the module's `src/main/java/chronos/<package>/`.
 | M7 No-op | `LawsTest.m7_aBranchWithNoInterventions...` |
 | M8 Locality | `LawsTest.m8_nodesWithNoCausalConnection...` (drop, delay, duplicate, crash interventions) |
 | M9 Identity | `LawsTest.m9...` |
-| M10 Root | `LawsTest.m10...` (clause 2 tested for roots in the branch, see DEVIATIONS), `AcceptanceTest.ad5` |
+| M10 Root | `LawsTest.m10...`, `M10CatalogueTest` (every intervention type; removal of every rule of 60 random plans; all branches replay), `AcceptanceTest.ad5`. Clause 1 holds in every test; clause 2 holds except the measured renumbering exception, lengthened partitions and config/reseed: DEV-28, DEV-29, DEV-36 |
 | M11 Immutability | `LawsTest.m11...` |
 | M12 Thread independence | `LawsTest.m12...` |
 | M13 Environment identity | `LawsTest.m13...`, `EngineTest.everyCopy...` |
