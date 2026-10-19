@@ -23,6 +23,14 @@ public record WorldImage(String timelineId, long seq, Map<String, Object> data) 
     }
 
     public static WorldImage fromMap(Map<String, Object> m) {
+        try {
+            return fromMapUnchecked(m);
+        } catch (ClassCastException | NullPointerException | IndexOutOfBoundsException | ArithmeticException e) {
+            throw new IllegalArgumentException("malformed WorldImage: " + e.getMessage(), e); // a document of the wrong shape is refused, never a raw runtime error
+        }
+    }
+
+    private static WorldImage fromMapUnchecked(Map<String, Object> m) {
         return new WorldImage((String) m.get("timelineId"), Canon.num(m.get("seq")), Canon.map(m.get("data")));
     }
 

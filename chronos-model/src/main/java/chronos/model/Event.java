@@ -98,6 +98,14 @@ public record Event(String eventId, long seq, String timelineId, String nodeId, 
     @SuppressWarnings("unchecked")
     public static Event fromMap(Map<String, Object> m) {
         try {
+            return fromMapUnchecked(m);
+        } catch (ClassCastException | NullPointerException | IndexOutOfBoundsException | ArithmeticException e) {
+            throw new IllegalArgumentException("malformed Event: " + e.getMessage(), e); // a document of the wrong shape is refused, never a raw runtime error
+        }
+    }
+
+    private static Event fromMapUnchecked(Map<String, Object> m) {
+        try {
             List<Integer> v = new ArrayList<>();
             for (Object o : (List<Object>) m.get("v")) v.add(((Number) o).intValue());
             List<Parent> ps = new ArrayList<>();

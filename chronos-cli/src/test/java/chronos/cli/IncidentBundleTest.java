@@ -152,6 +152,8 @@ class IncidentBundleTest {
         cases.add(new Object[]{"evidence naming another violation", forge(good, "c15.zip", e -> e.put("evidence.json", new String(e.get("evidence.json"), StandardCharsets.UTF_8).replace("\"single-primary\"", "\"other-invariant\"").getBytes(StandardCharsets.UTF_8)), true), "violation"});
         cases.add(new Object[]{"a lineage that does not end at the incident", forge(good, "c16.zip", e -> e.put("manifest.json", manifestText(e).replace("\"lineage\":[\"T0\"]", "\"lineage\":[\"T0\",\"T9\"]").getBytes(StandardCharsets.UTF_8)), true), "lineage"});
         cases.add(new Object[]{"a timeline id that is a path", forge(good, "c17.zip", e -> e.put("manifest.json", manifestText(e).replace("\"incident\":\"T0\"", "\"incident\":\"..\"").replace("\"lineage\":[\"T0\"]", "\"lineage\":[\"..\"]").getBytes(StandardCharsets.UTF_8)), true), "unsafe timeline id"});
+        cases.add(new Object[]{"a header of the wrong shape (resealed)", forge(good, "c18.zip", e -> e.put("files/T0/header.json", new String(e.get("files/T0/header.json"), StandardCharsets.UTF_8).replace("\"seed\":42", "\"seed\":[]").getBytes(StandardCharsets.UTF_8)), true), "not valid"});
+        cases.add(new Object[]{"a summary of the wrong shape (resealed)", forge(good, "c19.zip", e -> e.put("files/T0/summary.json", new String(e.get("files/T0/summary.json"), StandardCharsets.UTF_8).replace("\"eventCount\":72", "\"eventCount\":\"many\"").getBytes(StandardCharsets.UTF_8)), true), ""});
         Path notZip = tmp.resolve("not.zip");
         Files.writeString(notZip, "this is not a zip file");
         cases.add(new Object[]{"not a zip at all", notZip, "manifest"});

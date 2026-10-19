@@ -90,6 +90,17 @@ orders roots by virtual time, node order (env last) and event id, and never comp
 * *Did the tests find real bugs?* Yes, four: the chaos soak found a duplicate-identity collision for repeated duplicates and a verifier
   false mismatch on trailing silent steps (`docs/DEVIATIONS.md` DEV-12, DEV-13); testing replay from every checkpoint found that a
   checkpoint did not remember its run had stopped (DEV-21); the comparator tests led to the path tie-break rule (DEV-09).
+* *How is the first causal divergence kept honest when node ids are per-node counters?* A missing event on a node's lane renumbers everything
+  after it, which used to show up as extra "roots". The comparator now reports such events as **displaced**, with the reason: renumbered (same kind and
+  payload elsewhere on the lane), absence (the event it replaces depended on a message or fault this timeline does not reproduce) or silence
+  (a divergent drop to that node). Absence and silence are labelled potential. The engine, for its part, links what an intervention changes to the
+  intervention itself: ghost rules for removed faults, lane marks for removed inputs, moved fault windows, patched configuration, reseeded streams
+  (DEV-36, DEV-43). Law M10 then holds in every case of a 120-intervention random sweep; a 4,000-seed run leaves 6 of 8,752 (0.07%).
+* *Is the explorer a model checker?* No. `chronos explore` runs every subset of at most K declared faults for one seed, so "no violation" means "none
+  in this bound"; it varies fault schedules, not message interleavings. It beats random sampling at the same budget in coverage of minimal causes
+  (RE: 7 of 7 against 2 of 7) and can say "this whole space is clean" (KA-0), which random testing cannot (`docs/EVALUATION.md`).
+* *What does an incident bundle protect against?* Damage, tampering and false claims: every file has a SHA-256, the log has its own commit checksums,
+  and the causal evidence is recomputed from the events, so a bundle whose story does not match its log is rejected before anything is written.
 * *Does `why` always name the fault?* No, and the evaluation shows it: a fault is linked only to timers that noticed its silence, so a failure caused by a message that never arrived and that nothing was waiting for has no fault in its causal past (the tutorial case: chains 0/100, `causes` 100/100 on randomised cases). `why` therefore also prints a labelled "possible silence" hint (98-100/100 with it). Explanation says what happened; counterfactuals say what was necessary (`docs/EVALUATION.md`).
 * *How do you know the explanations are right on bugs you did not plant?* `docs/EVALUATION.md`: 800 chaos runs, 100 failures, a root fault
   named in 94, and for 73 of them removing exactly that fault by a real counterfactual made the failure disappear; and what that does

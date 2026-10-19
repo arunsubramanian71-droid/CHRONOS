@@ -65,6 +65,14 @@ public record Intervention(String id, String type, Map<String, Object> params) {
     }
 
     public static Intervention fromMap(Map<String, Object> m) {
+        try {
+            return fromMapUnchecked(m);
+        } catch (ClassCastException | NullPointerException | IndexOutOfBoundsException | ArithmeticException e) {
+            throw new IllegalArgumentException("malformed Intervention: " + e.getMessage(), e); // a document of the wrong shape is refused, never a raw runtime error
+        }
+    }
+
+    private static Intervention fromMapUnchecked(Map<String, Object> m) {
         return new Intervention((String) m.get("id"), (String) m.get("type"), Canon.map(m.get("params")));
     }
 

@@ -122,6 +122,14 @@ public record FaultRule(String id, TriggerType trigger, FaultAction action, Map<
     }
 
     public static FaultRule fromMap(Map<String, Object> m) {
+        try {
+            return fromMapUnchecked(m);
+        } catch (ClassCastException | NullPointerException | IndexOutOfBoundsException | ArithmeticException e) {
+            throw new IllegalArgumentException("malformed FaultRule: " + e.getMessage(), e); // a document of the wrong shape is refused, never a raw runtime error
+        }
+    }
+
+    private static FaultRule fromMapUnchecked(Map<String, Object> m) {
         return new FaultRule((String) m.get("id"), TriggerType.valueOf((String) m.get("trigger")),
                 FaultAction.valueOf((String) m.get("action")), Canon.map(m.get("params")), Boolean.TRUE.equals(m.get("nonLocal")));
     }

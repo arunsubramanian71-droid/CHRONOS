@@ -98,6 +98,8 @@ thread with a bounded queue (D-21).
 | `InterventionSearch` | which single change in the causal past of a violation makes it disappear (FR-38) |
 | `TimelineComparator` | aligns two timelines by id, per-timeline taint, causal roots, the first causal divergence, the explanation path (D-16) |
 | `NodeLocalReplay` | re-runs one node alone from its recorded inputs (R5) |
+| `SystematicExplorer`, `Counterexample` | bounded, exhaustive enumeration of fault schedules (every subset of at most K candidates, fixed order, trace-equivalence and superset reductions, explicit coverage statement) with reproducible, checksummed counterexamples (DEV-44) |
+| `IncidentBundle` | one checksummed ZIP carrying a timeline, its ancestors, its evidence and reproduction steps; validated in a staging store before anything is imported (DEV-45) |
 | `Campaign`, `ChaosPlanGenerator` | seed campaigns and random fault plans |
 
 ## Threads

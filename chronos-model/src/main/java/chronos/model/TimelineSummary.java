@@ -26,6 +26,14 @@ public record TimelineSummary(TimelineStatus status, long eventCount, long lastS
     }
 
     public static TimelineSummary fromMap(Map<String, Object> m) {
+        try {
+            return fromMapUnchecked(m);
+        } catch (ClassCastException | NullPointerException | IndexOutOfBoundsException | ArithmeticException e) {
+            throw new IllegalArgumentException("malformed TimelineSummary: " + e.getMessage(), e); // a document of the wrong shape is refused, never a raw runtime error
+        }
+    }
+
+    private static TimelineSummary fromMapUnchecked(Map<String, Object> m) {
         Map<String, Long> cov = new TreeMap<>();
         for (Map.Entry<String, Object> e : Canon.map(m.get("faultCoverage")).entrySet()) cov.put(e.getKey(), Canon.num(e.getValue()));
         return new TimelineSummary(TimelineStatus.valueOf((String) m.get("status")), Canon.num(m.get("eventCount")),

@@ -72,6 +72,14 @@ public record TimelineHeader(String timelineId, String parentId, long branchSeq,
 
     public static TimelineHeader fromMap(Map<String, Object> m) {
         try {
+            return fromMapUnchecked(m);
+        } catch (ClassCastException | NullPointerException | IndexOutOfBoundsException | ArithmeticException e) {
+            throw new IllegalArgumentException("malformed TimelineHeader: " + e.getMessage(), e); // a document of the wrong shape is refused, never a raw runtime error
+        }
+    }
+
+    private static TimelineHeader fromMapUnchecked(Map<String, Object> m) {
+        try {
             int fv = (int) Canon.num(m.get("formatVersion"));
             if (fv != Formats.FORMAT_VERSION)
                 throw new UnsupportedFormatException("unsupported log format version " + fv + " (this build reads " + Formats.FORMAT_VERSION + ")");
