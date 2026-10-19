@@ -1,0 +1,212 @@
+CHRONOS demonstration on RE: a replicated key-value store (client, primary p, backup b).
+p sends a heartbeat every 100 ms; b promotes itself after 300 ms of silence; a 400 ms partition (300-700 ms) cuts p from b.
+
+====================================================================================================
+AD-1  Run RE with a failing seed: the single-primary invariant breaks, and CHRONOS prints the causal chain from partition to violation
+====================================================================================================
+recorded T0: re seed=42  -> TIMED_OUT, 72 events, final virtual time 1000 ms
+  log hash 9c8ce06cfc1e5735013a7afa0564d77c883735569ed0586897f90543dfbf3cd2   stored under chronos-data/timelines/T0
+  fault coverage: {partition-pb=1}
+  INVARIANT VIOLATED: single-primary at inv:single-primary#1
+  why inv:single-primary#1: VIOLATED single-primary: split brain: 2 primaries (p, b)
+    suspects: 45 of 72 events are in its causal past
+    chain from fault:partition-pb#1 (a fault):
+      fault:partition-pb#1 [env t=300] FAULT PARTITION (partition-pb)
+        --OMISSION-->
+      b#12 [b t=510] timer watchdog fires
+        --STEP_EFFECT-->
+      inv:single-primary#1 [env t=510] VIOLATED single-primary: split brain: 2 primaries (p, b)
+    chain from p#1 (a node start):
+      p#1 [p t=0] start
+        --WITNESS-->
+      inv:single-primary#1 [env t=510] VIOLATED single-primary: split brain: 2 primaries (p, b)
+  [PASS] the run ended with the single-primary invariant violated
+  [PASS] the first causal chain starts at the partition event and runs through the watchdog (OMISSION) to the violation
+
+====================================================================================================
+AD-2  Replay the run and show identical event-log hashes; then run a deliberately nondeterministic node and watch CHRONOS flag the first mismatching event
+====================================================================================================
+  REPLAY VERIFIED: 72 events matched (from position 0), log hash 9c8ce06cfc1e5735013a7afa0564d77c883735569ed0586897f90543dfbf3cd2
+  [PASS] verification replay regenerated every event of T0 exactly
+  two independent runs: hash 72844fa1c8b1b05da143ff02940a762091e20a2facf257183cdd3ba51a32e20f == 72844fa1c8b1b05da143ff02940a762091e20a2facf257183cdd3ba51a32e20f
+  [PASS] running RE twice gives byte-identical logs
+recorded T1: bad seed=1  -> TIMED_OUT, 5 events, final virtual time 10 ms
+  log hash 80507c48e22cb7fb604f7b4ac3184322244ae62d66a7f87bfe785421bc0e2e7b   stored under chronos-data/timelines/T1
+  DETERMINISM VIOLATION: mismatch at B#3: expected a timer due at 660457 ms, got 831462 ms
+    last matching event : B#2
+    expected            : {"id":"B#3","kind":"TIMER_SET","l":4,"node":"B","p":[["B#2","PROGRAM_ORDER"],["B#2","STEP_EFFECT"]],"pl":{"due":660457,"name":"hidden-delay"},"seq":4,"tl":"T1","v":[2,3,0],"vt":10}
+    actual              : {"id":"B#3","kind":"TIMER_SET","l":4,"node":"B","p":[["B#2","PROGRAM_ORDER"],["B#2","STEP_EFFECT"]],"pl":{"due":831462,"name":"hidden-delay"},"seq":4,"tl":"T1","v":[2,3,0],"vt":10}
+    difference          : payload.due: expected 660457 got 831462
+    likely cause        : a timing difference suggests hidden use of time or randomness
+  [PASS] the bad citizen (reads the system clock) is flagged at its first mismatching event
+
+====================================================================================================
+AD-3  Jump to the event just before the violation, show all node states and in-flight messages, step backward three times
+====================================================================================================
+  The violation is recorded in the same atomic step as b's promotion, so the node states of the completed step show BOTH primaries at the violation event:
+  cursor 47 = inv:single-primary#1: VIOLATED single-primary: split brain: 2 primaries (p, b)
+  timeline T0 cursor 47: inv:single-primary#1 VIOLATED single-primary: split brain: 2 primaries (p, b)  (virtual time 510 ms; last completed step ends at 47)
+  node states:
+    client: {"durable":{},"volatile":{"sent":3,"target":"p"}}
+    p: {"durable":{},"volatile":{"data":{"x":1,"y":2,"z":3},"hb":5,"role":"PRIMARY"}}
+    b: {"durable":{},"volatile":{"data":{"x":1,"y":2,"z":3},"role":"PRIMARY","watchdog":"b#10"}}
+  in-flight messages: none
+  pending timers: 
+    p#23 heartbeat on p, due at 600
+  clocks (Lamport, vector over [client, p, b] + env):
+    client: L7 [7,0,0,0]
+    p: L24 [7,23,0,0]
+    b: L18 [7,14,13,1]
+    env: L25 [7,22,12,5]
+  [PASS] p and b are both PRIMARY at the violation, reconstructed from the log without running any application code
+  back 1 -> cursor 46: b#13 [b t=510] note: no heartbeat for 300 ms: promoting myself to primary
+  back 2 -> cursor 45: b#12 [b t=510] timer watchdog fires
+  back 3 -> cursor 44: drop:p#22 [env t=510] drop p#22 (partition partition-pb)
+  (the cursor is now inside the step that promoted b: states shown are those of the last completed step, where b was still a BACKUP)
+  [PASS] b is still a BACKUP three events earlier
+  [PASS] going forward three events again returns exactly the same world (going back is only a cursor move)
+
+====================================================================================================
+AD-4  Branch at the partition, heal it 200 ms earlier, run forward: the violation disappears
+====================================================================================================
+  COUNTERFACTUAL on T0 at position 35 -> new timeline T0.1
+    intervention iv:heal-early: SHIFT_HEAL {"by":-200,"ruleId":"partition-pb"}
+    baseline failure: single-primary at inv:single-primary#1 (t=510)
+    branch failure  : none
+    VERDICT: FAILURE_DISAPPEARS
+    the branch ran to virtual time 1000 ms (the baseline failed at 510 ms) with no violation: in this world the changed event was a but-for cause of single-primary.
+    events in the causal future of the intervention: 19
+  [PASS] verdict FAILURE_DISAPPEARS
+  [PASS] the branch shares the parent's history up to position 35 byte for byte (stored only as a reference, not a copy)
+  [PASS] the intervention is recorded on env as iv:heal-early at the branch point (D-25)
+  [PASS] the branch replays and verifies through its lineage
+
+====================================================================================================
+AD-5  Compare the failing and the healed timelines: CHRONOS names the first causal divergence and the path to the failure
+====================================================================================================
+  COMPARISON T0 (reference A) vs T0.1 (B), structural, shared prefix = 36 events
+    classes (after the shared prefix): {SAME=26, CHANGED=7, MISSING=3, EXTRA=11, REORDERED=0}
+    each node's first local divergence:
+      b: A=b#12 B=b#12  -> input difference (a message, timer or input arrived differently or not at all; the cause lies elsewhere)
+      env: A=drop:p#16 B=iv:heal-early  -> input difference (a message, timer or input arrived differently or not at all; the cause lies elsewhere)
+    causal roots (earliest first; taint is computed separately inside each timeline):
+      * iv:heal-early [T0.1, env, t=300, EXTRA]
+        b#12 [T0, b, t=510, CHANGED]
+        drop:p#22 [T0, env, t=510, MISSING]
+    FIRST CAUSAL DIVERGENCE: iv:heal-early (EXTRA on env at t=300 ms, only in T0.1)
+    divergence cone: 10 events in A, 18 in B; nodes affected: [b, env]
+    invariant outcomes: A: TIMED_OUT (inv:single-primary#1 single-primary); B: TIMED_OUT, invariants held
+    explanation path in T0 to the failure inv:single-primary#1:
+      (the first causal divergence iv:heal-early exists only in T0.1; the path starts at its anchor fault:partition-pb#1, the last Same event on env before the divergence)
+      1. fault:partition-pb#1 (FAULT PARTITION (partition-pb) at t=300) --OMISSION--> b#12 (timer watchdog fires at t=510)
+      2. b#12 (timer watchdog fires at t=510) --STEP_EFFECT--> inv:single-primary#1 (VIOLATED single-primary: split brain: 2 primaries (p, b) at t=510)
+  [PASS] the first causal divergence is the intervention's own event iv:heal-early (law M10)
+  [PASS] the explanation path in T0 starts at the partition event (the anchor) and ends at the violation
+
+====================================================================================================
+AD-6  Generate the static, self-contained HTML report
+====================================================================================================
+report written: ./chronos-data/reports/T0-vs-T0.1.html (65 KiB, self-contained, no network access)
+  [PASS] the report exists and is a complete HTML page with an inline SVG space-time diagram
+  [PASS] the report makes no network calls and references no external resource
+  [PASS] the report shows the first causal divergence, the verdict and the replay status
+  open it with:  open ./chronos-data/reports/T0-vs-T0.1.html
+
+====================================================================================================
+Known-answer scenarios (Section 25)
+====================================================================================================
+recorded T2: ka2 seed=1  -> VIOLATED, 19 events, final virtual time 290 ms
+  log hash 5a45be870828dd4d09d7d24c954362fb90b028e43eb5a1351d1e77edecdd1159   stored under chronos-data/timelines/T2
+  fault coverage: {delay-first-replicate=1}
+  INVARIANT VIOLATED: replicas-converge at inv:replicas-converge#1
+  why inv:replicas-converge#1: VIOLATED replicas-converge: replicas diverged: p={"x":2} b={"x":1}
+    suspects: 18 of 19 events are in its causal past
+    chain from fault:delay-first-replicate#1 (a fault):
+      fault:delay-first-replicate#1 [env t=20] FAULT DELAY (delay-first-replicate)
+        --FAULT-->
+      b#4 [b t=280] recv Replicate <- p
+        --WITNESS-->
+      inv:replicas-converge#1 [env t=290] VIOLATED replicas-converge: replicas diverged: p={"x":2} b={"x":1}
+    chain from client#2 (an input):
+      client#2 [client t=10] client input {"key":"x","value":1}
+        --STEP_EFFECT-->
+      client#3 [client t=10] send Write -> p
+        --MESSAGE-->
+      p#2 [p t=20] recv Write <- client
+        --STEP_EFFECT-->
+      p#3 [p t=20] send Replicate -> b
+        --MESSAGE-->
+      b#4 [b t=280] recv Replicate <- p
+        --WITNESS-->
+      inv:replicas-converge#1 [env t=290] VIOLATED replicas-converge: replicas diverged: p={"x":2} b={"x":1}
+    chain from client#4 (an input):
+      client#4 [client t=20] client input {"key":"x","value":2}
+        --STEP_EFFECT-->
+      client#5 [client t=20] send Write -> p
+        --MESSAGE-->
+      p#4 [p t=30] recv Write <- client
+        --WITNESS-->
+      inv:replicas-converge#1 [env t=290] VIOLATED replicas-converge: replicas diverged: p={"x":2} b={"x":1}
+  [PASS] KA-2 lost update: the root of the chain is the delay fault
+  [PASS] KA-2: removing the delay makes the failure disappear (FAILURE_DISAPPEARS)
+recorded T3: ka3 seed=1  -> VIOLATED, 22 events, final virtual time 230 ms
+  log hash df8783e11de06c2424634067050b227d4337be77dd3e6164df97de9f75930970   stored under chronos-data/timelines/T3
+  fault coverage: {crash-coord=1}
+  INVARIANT VIOLATED: no-blocked-participant at inv:no-blocked-participant#1
+  why inv:no-blocked-participant#1: VIOLATED no-blocked-participant: participants blocked in PREPARED: [part1]
+    suspects: 20 of 22 events are in its causal past
+    chain from fault:crash-coord#1 (a fault):
+      fault:crash-coord#1 [env t=35] FAULT CRASH (crash-coord)
+        --OMISSION-->
+      part1#5 [part1 t=230] timer decision-timeout fires
+        --STEP_EFFECT-->
+      inv:no-blocked-participant#1 [env t=230] VIOLATED no-blocked-participant: participants blocked in PREPARED: [part1]
+    chain from client#2 (an input):
+      client#2 [client t=10] client input {"op":"begin"}
+        --STEP_EFFECT-->
+      client#3 [client t=10] send Begin -> coord
+        --MESSAGE-->
+      coord#2 [coord t=20] recv Begin <- client
+        --STEP_EFFECT-->
+      coord#3 [coord t=20] send Prepare -> part1
+        --MESSAGE-->
+      part1#2 [part1 t=30] recv Prepare <- coord
+        --STEP_EFFECT-->
+      part1#3 [part1 t=30] set timer decision-timeout due 230
+        --TIMER-->
+      part1#5 [part1 t=230] timer decision-timeout fires
+        --STEP_EFFECT-->
+      inv:no-blocked-participant#1 [env t=230] VIOLATED no-blocked-participant: participants blocked in PREPARED: [part1]
+    chain from part2#1 (a node start):
+      part2#1 [part2 t=0] start
+        --WITNESS-->
+      inv:no-blocked-participant#1 [env t=230] VIOLATED no-blocked-participant: participants blocked in PREPARED: [part1]
+  [PASS] KA-3 blocked commit: the root is the coordinator crash
+  [PASS] KA-3: without the crash no participant stays undecided (FAILURE_DISAPPEARS)
+recorded T4: re2 seed=42  -> VIOLATED, 70 events, final virtual time 510 ms
+  log hash 6f420305ac1bf9fca3534c99fb64893614cbe8194c9e06fd9e77b5ce870591bb   stored under chronos-data/timelines/T4
+  fault coverage: {partition-p-b1=1, partition-p-b2=1}
+  INVARIANT VIOLATED: single-primary at inv:single-primary#1
+  why inv:single-primary#1: VIOLATED single-primary: split brain: 2 primaries (p, b1)
+    suspects: 56 of 70 events are in its causal past
+    chain from fault:partition-p-b1#1 (a fault):
+      fault:partition-p-b1#1 [env t=300] FAULT PARTITION (partition-p-b1)
+        --OMISSION-->
+      b1#12 [b1 t=510] timer watchdog fires
+        --STEP_EFFECT-->
+      inv:single-primary#1 [env t=510] VIOLATED single-primary: split brain: 2 primaries (p, b1)
+    chain from p#1 (a node start):
+      p#1 [p t=0] start
+        --WITNESS-->
+      inv:single-primary#1 [env t=510] VIOLATED single-primary: split brain: 2 primaries (p, b1)
+    chain from b2#1 (a node start):
+      b2#1 [b2 t=0] start
+        --WITNESS-->
+      inv:single-primary#1 [env t=510] VIOLATED single-primary: split brain: 2 primaries (p, b1)
+  [PASS] KA-4 overdetermined: removing either partition alone reports FAILURE_PERSISTS (FAILURE_PERSISTS, FAILURE_PERSISTS)
+  [PASS] KA-4: the automated search lists both causes together [[partition-p-b1, partition-p-b2]]
+  [PASS] KA-0 control: 60 runs of a correct protocol under random fault plans, no violation, ever
+
+----------------------------------------------------------------------------------------------------
+demonstration finished: 24 of 24 checks passed - ALL PASSED
+timelines: ./chronos-data/timelines   report: ./chronos-data/reports/T0-vs-T0.1.html

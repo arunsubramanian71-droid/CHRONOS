@@ -13,7 +13,7 @@ exactly as the specification defines them.
 
 > **Status in one paragraph.** All eight modules exist and build; 119 automated tests pass; the flagship demonstration
 > (acceptance demonstrations AD-1 to AD-6 and known-answer scenarios KA-0, KA-2, KA-3, KA-4 on the replicated store "RE") runs from
-> one command with 22 self-checks. What is **not** done, and what deviates from the specification, is listed honestly in
+> one command with 24 self-checks. What is **not** done, and what deviates from the specification, is listed honestly in
 > [`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md), [`docs/TRACEABILITY.md`](docs/TRACEABILITY.md) and
 > [`docs/DEVIATIONS.md`](docs/DEVIATIONS.md). Full v0.2 compliance is **not** claimed.
 
