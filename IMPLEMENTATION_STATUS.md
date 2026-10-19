@@ -127,7 +127,7 @@ heard from the other side), **DEV-02** (digest parent ids exclude PROGRAM_ORDER)
 cd /Users/arunhbk/Desktop/Chronos
 git status && git log --oneline           # local repository, branch main, no remote
 export JAVA_HOME=$(/usr/libexec/java_home -v 21)
-mvn -ntp clean package                    # must end in BUILD SUCCESS with 186 tests
+mvn -ntp clean package                    # must end in BUILD SUCCESS with 205 tests
 java -jar chronos-cli/target/chronos.jar --data chronos-data demo     # 24 of 24 checks
 ```
 
