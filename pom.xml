@@ -12,8 +12,11 @@
   <modules>
     <module>chronos-model</module>
     <module>chronos-sdk</module>
+    <module>chronos-store</module>
     <module>chronos-runtime</module>
     <module>chronos-demo</module>
+    <module>chronos-analysis</module>
+    <module>chronos-cli</module>
   </modules>
 
   <properties>

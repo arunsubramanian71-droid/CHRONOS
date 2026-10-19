@@ -118,6 +118,14 @@ final class FaultInjector {
         history.add(f);
     }
 
+    /** Partitions that have ended and cut the link a-b, which a message sent at sentAt may have crossed because they healed. */
+    List<ActiveFault> healedPartitionsCrossed(String a, String b, long sentAt, long now) {
+        List<ActiveFault> out = new ArrayList<>();
+        for (ActiveFault f : history)
+            if (f.kind.equals("partition") && f.cuts(a, b) && f.clearRef != null && f.start <= sentAt && sentAt <= f.end && f.end <= now) out.add(f);
+        return out;
+    }
+
     ActiveFault activePartition(String ruleId) {
         for (ActiveFault f : active) if (f.kind.equals("partition") && f.ruleId.equals(ruleId)) return f;
         return null;

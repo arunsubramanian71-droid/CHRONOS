@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent><groupId>dev.chronos</groupId><artifactId>chronos-parent</artifactId><version>0.2.0</version></parent>
+  <artifactId>chronos-cli</artifactId>
+  <name>chronos-cli</name>
+  <description>Presentation layer (C16): hand-written command-line interface, exporters (text, DOT, JSON) and the static self-contained HTML report. Holds no logic of its own. Depends on analysis, runtime, store, demo, sdk, model.</description>
+  <dependencies>
+    <dependency><groupId>dev.chronos</groupId><artifactId>chronos-analysis</artifactId></dependency>
+    <dependency><groupId>dev.chronos</groupId><artifactId>chronos-runtime</artifactId></dependency>
+    <dependency><groupId>dev.chronos</groupId><artifactId>chronos-store</artifactId></dependency>
+    <dependency><groupId>dev.chronos</groupId><artifactId>chronos-demo</artifactId></dependency>
+    <dependency><groupId>dev.chronos</groupId><artifactId>chronos-sdk</artifactId></dependency>
+    <dependency><groupId>dev.chronos</groupId><artifactId>chronos-model</artifactId></dependency>
+  </dependencies>
+  <build>
+    <plugins>
+      <!-- one self-contained jar so the demo runs with: java -jar chronos-cli/target/chronos.jar ... -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-shade-plugin</artifactId>
+        <executions>
+          <execution>
+            <phase>package</phase>
+            <goals><goal>shade</goal></goals>
+            <configuration>
+              <finalName>chronos</finalName>
+              <createDependencyReducedPom>false</createDependencyReducedPom>
+              <transformers>
+                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer"><mainClass>chronos.cli.Main</mainClass></transformer>
+              </transformers>
+              <filters>
+                <filter><artifact>*:*</artifact><excludes><exclude>META-INF/*.SF</exclude><exclude>META-INF/*.DSA</exclude><exclude>META-INF/*.RSA</exclude><exclude>module-info.class</exclude><exclude>META-INF/versions/**</exclude></excludes></filter>
+              </filters>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

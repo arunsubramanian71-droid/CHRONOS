@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent><groupId>dev.chronos</groupId><artifactId>chronos-parent</artifactId><version>0.2.0</version></parent>
+  <artifactId>chronos-analysis</artifactId>
+  <name>chronos-analysis</name>
+  <description>Causal graph (C7), state reconstruction (C8), replay and branch decision sources, replay engine (C9), time-travel session (C10), timeline manager (C11), counterfactual engine (C13), comparator (C14). Depends on runtime, sdk, store, model. Never calls into a running engine except through replay and branching.</description>
+  <dependencies>
+    <dependency><groupId>dev.chronos</groupId><artifactId>chronos-runtime</artifactId></dependency>
+    <dependency><groupId>dev.chronos</groupId><artifactId>chronos-sdk</artifactId></dependency>
+    <dependency><groupId>dev.chronos</groupId><artifactId>chronos-store</artifactId></dependency>
+    <dependency><groupId>dev.chronos</groupId><artifactId>chronos-model</artifactId></dependency>
+  </dependencies>
+</project>

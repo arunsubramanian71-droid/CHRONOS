@@ -332,6 +332,9 @@ public final class Engine {
         if (t.last != null) links.add(new Link(t.last, EdgeKind.PROGRAM_ORDER));
         links.add(new Link(sendRef, EdgeKind.MESSAGE));
         for (Object o : Canon.list(d.get("faultRefs"))) links.add(new Link(Ref.fromMap(Canon.map(o)), EdgeKind.FAULT));
+        // a message sent while a partition cut its link, and delivered only because the partition healed, was altered by the heal
+        if (d.containsKey("sentAt"))
+            for (ActiveFault healed : faults.healedPartitionsCrossed(from, to, Canon.num(d.get("sentAt")), time)) links.add(new Link(healed.clearRef, EdgeKind.FAULT));
         Event trig = emitNode(t, EventKind.MESSAGE_DELIVERED, dup ? mapOf("messageId", msgId, "duplicate", true) : mapOf("messageId", msgId),
                 links, (String) d.get("origin"));
         group.add(trig);
@@ -590,13 +593,14 @@ public final class Engine {
         Ref iv = faults.ivRef(origin);
         if (iv != null) links.add(new Link(iv, EdgeKind.FAULT));
         Event e = emitEnv("fault:" + af.ruleId + "#" + n, EventKind.FAULT_CLEARED, mapOf("rule", af.ruleId, "action", "PARTITION", "at", time), links, origin);
+        af.clearRef = e.ref();
         faults.close(af, time);
         return e;
     }
 
     private AgendaItem deliveryItem(String identity, long due, int targetIdx, String msgId, String from, String to, String type,
                                     Map<String, Object> body, Ref sendRef, List<Ref> faultRefs, String origin, boolean dup) {
-        Map<String, Object> d = mapOf("messageId", msgId, "from", from, "to", to, "type", type, "body", body, "sendRef", sendRef.toMap());
+        Map<String, Object> d = mapOf("messageId", msgId, "from", from, "to", to, "type", type, "body", body, "sendRef", sendRef.toMap(), "sentAt", time);
         List<Object> fr = new ArrayList<>();
         for (Ref r : faultRefs) fr.add(r.toMap());
         d.put("faultRefs", fr);
