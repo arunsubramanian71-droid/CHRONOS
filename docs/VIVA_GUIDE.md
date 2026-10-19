@@ -75,8 +75,18 @@ orders roots by virtual time, node order (env last) and event id, and never comp
 
 * *Why a simulation instead of tracing real Java programs?* Decision D-01: replaying arbitrary Java needs control over threads, clocks,
   I/O and native code; applications are written against the small Node API instead.
-* *What is not implemented?* See `docs/DEVIATIONS.md` ("Not implemented") and the NOT IMPLEMENTED rows of `docs/TRACEABILITY.md`: the live
-  viewer, intervention search over the causal past, the "on node state" trigger, the blind evaluation with a second person, Windows verification.
+* *What is not implemented?* See `docs/DEVIATIONS.md` ("Not implemented") and the NOT IMPLEMENTED rows of `docs/TRACEABILITY.md`: persisted
+  index files, log compression, the Pinned continuation policy, the blind evaluation with a second person, Windows verification. (The
+  Stretch items are done: on-node-state trigger, intervention search, consistent cuts, knowledge view, node-local replay, live viewer.)
+* *What does intervention search do, and what can it miss?* `chronos search T0` takes the causal past of the first violation, turns each
+  changeable event in it (a message, a scripted input, a fault rule) into a real counterfactual branch (drop, remove input, remove fault)
+  and ranks the ones that make the failure disappear by causal distance. It tries one change at a time, so a failure that needs two
+  changes (KA-4) shows up under `chronos causes` instead (DEV-30).
+* *What is node-local replay good for?* `chronos local-replay T0 b` re-runs one node alone from its recorded inputs and checks every send,
+  timer, random draw and post-step state digest. It localises a bug to one node's logic in milliseconds, and it also catches hidden
+  nondeterminism (the bad citizen fails it). It cannot check what the world did around the node (DEV-32).
+* *What is the knowledge view?* `chronos inspect T0 --knows b#12`: for each other node, what b had last heard and how stale that is, with the
+  state b would believe next to the actual state. It makes "b promoted itself because it had not heard from p" visible (DEV-31).
 * *Did the tests find real bugs?* Yes, four: the chaos soak found a duplicate-identity collision for repeated duplicates and a verifier
   false mismatch on trailing silent steps (`docs/DEVIATIONS.md` DEV-12, DEV-13); testing replay from every checkpoint found that a
   checkpoint did not remember its run had stopped (DEV-21); the comparator tests led to the path tie-break rule (DEV-09).
