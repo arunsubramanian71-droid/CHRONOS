@@ -25,6 +25,12 @@ public record TimelineHeader(String timelineId, String parentId, long branchSeq,
     /** The reserved parameter that records a branch's continuation policy; absent means Continue (D-15). */
     public static final String CONTINUATION_PARAM = "chronos.continuation";
 
+    /** The same header under another timeline id (used to hold a copy of a log next to the original, for perturbation tests). */
+    public TimelineHeader renamed(String newId) {
+        return new TimelineHeader(newId, parentId, branchSeq, scenario, params, seed, nodes, faultPlan, interventions, horizon,
+                stopOnViolation, formatVersion, codeVersion, codeFingerprint, label);
+    }
+
     public TimelineHeader withParam(String key, String value) {
         Map<String, String> p = new TreeMap<>(params);
         p.put(key, value);
