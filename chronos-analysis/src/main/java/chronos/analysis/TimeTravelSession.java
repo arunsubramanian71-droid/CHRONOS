@@ -280,12 +280,18 @@ public final class TimeTravelSession {
                     stack.push(p);
                 }
             }
-            if (!hasParent && v != e) sources.add(v);
+            // sources: events nothing certain leads to (inputs, starts), and always every fault or intervention in the past,
+            // because a fault that fires at send time has that send as its trigger but is still a cause worth naming
+            if (v != e && (!hasParent || isFault(events.get(v)))) sources.add(v);
         }
         sources.sort(Comparator.comparingInt((Integer p) -> sourcePriority(events.get(p))).thenComparingInt(p -> p));
         List<List<Integer>> chains = new ArrayList<>();
         for (int s : sources) graph.path(s, e, k -> k != EdgeKind.PROGRAM_ORDER).ifPresent(chains::add);
         return chains;
+    }
+
+    private static boolean isFault(Event e) {
+        return e.kind() == EventKind.FAULT_INJECTED || e.kind() == EventKind.FAULT_CLEARED || e.kind() == EventKind.INTERVENTION_APPLIED;
     }
 
     private static int sourcePriority(Event e) {

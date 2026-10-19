@@ -212,12 +212,13 @@ public final class CausalGraph {
         if (a == b) return Optional.of(List.of(a));
         int n = b - a + 1;
         int[] dist = new int[n];
+        int[] po = new int[n];   // tie-break: how many PROGRAM_ORDER hops the cheapest path uses (fewer = more "because-of")
         int[] prev = new int[n];
         Arrays.fill(dist, Integer.MAX_VALUE);
         Arrays.fill(prev, -1);
         dist[0] = 0;
         for (int v = a + 1; v <= b; v++) {
-            int best = Integer.MAX_VALUE, bp = -1;
+            int best = Integer.MAX_VALUE, bestPo = Integer.MAX_VALUE, bp = -1;
             for (int i = parentStart[v]; i < parentStart[v + 1]; i++) {
                 int p = parentTo[i];
                 if (p < a) continue;
@@ -226,13 +227,17 @@ public final class CausalGraph {
                 int dp = dist[p - a];
                 if (dp == Integer.MAX_VALUE) continue;
                 int d = dp + k.cost();
-                if (d < best || (d == best && p < bp)) {
+                int pc = po[p - a] + (k == EdgeKind.PROGRAM_ORDER ? 1 : 0);
+                // cheapest first; at equal cost prefer the path with fewer program-order hops, then the earlier parent
+                if (d < best || (d == best && (pc < bestPo || (pc == bestPo && p < bp)))) {
                     best = d;
+                    bestPo = pc;
                     bp = p;
                 }
             }
             if (bp >= 0) {
                 dist[v - a] = best;
+                po[v - a] = bestPo;
                 prev[v - a] = bp;
             }
         }
@@ -240,6 +245,16 @@ public final class CausalGraph {
         LinkedList<Integer> out = new LinkedList<>();
         for (int v = b; v != -1; v = (v == a) ? -1 : prev[v - a]) out.addFirst(v);
         return Optional.of(out);
+    }
+
+    /** Total cost of a path under the Section 20 rule (certain and OMISSION edges 1, other potential edges 2). */
+    public int pathCost(List<Integer> path) {
+        int c = 0;
+        for (int i = 0; i + 1 < path.size(); i++) {
+            EdgeKind k = edgeBetween(path.get(i), path.get(i + 1));
+            c += k == null ? 0 : k.cost();
+        }
+        return c;
     }
 
     /** The kind of the cheapest edge from parent to child, or null if there is none. */
