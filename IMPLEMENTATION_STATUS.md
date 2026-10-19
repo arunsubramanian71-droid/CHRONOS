@@ -12,7 +12,7 @@ HTML report, benchmarks and documentation. **Full v0.2 compliance is NOT claimed
 | Maven runs on JDK 21 | `mvn -version` after `JAVA_HOME=$(/usr/libexec/java_home -v 21)`; the build also has an enforcer rule `[21,22)` | `Java version: 21.0.12.1` |
 | Compilation + all tests + packaging, from scratch (macOS) | `mvn -ntp clean package` | **BUILD SUCCESS**, ~14 s, 8 modules |
 | Unit, integration and acceptance tests | same command | **150 tests, 0 failures, 0 errors, 0 skipped** |
-| **Linux** build and tests | `docker run maven:3.9-eclipse-temurin-21 ... mvn -ntp package` on a copy of the source (Ubuntu 24.04 aarch64, Temurin 21, Maven 3.9.16) | **BUILD SUCCESS**; the golden files generated on macOS pass on Linux (NFR-14, R16) |
+| **Linux** build and tests | `docker run maven:3.9-eclipse-temurin-21 ... mvn -ntp package` on a copy of the source (Ubuntu 24.04 aarch64, Temurin 21, Maven 3.9.16) | **BUILD SUCCESS, 150 tests, 0 failures** (re-run on the final source); the golden files generated on macOS pass on Linux (NFR-14, R16); the packaged jar's demo gives 24 of 24 checks on Linux too |
 | Packaging | same command | `chronos-cli/target/chronos.jar` (2.6 MB), `chronos-bench/target/chronos-bench.jar` (5.6 MB), both self-contained |
 | Flagship demonstration from the packaged jar | `java -jar chronos-cli/target/chronos.jar --data chronos-data demo` | **24 of 24 checks passed**, exit 0 (`docs/demo-output.txt`) |
 | Cross-JVM determinism | `chronos determinism re --seed 42 --jvm 2` (in `CliTest`) | the same log hash in this JVM and in 2 fresh JVMs |
@@ -20,7 +20,7 @@ HTML report, benchmarks and documentation. **Full v0.2 compliance is NOT claimed
 | Persistence and reload in a fresh context | `PersistenceTest`, `AcceptanceTest.ad2` | saved by one `TimelineStore`, loaded and replay-verified by another; a **real child process killed mid-write** leaves a readable log |
 | Replay verification | `LawsTest.m1*`, `SoakTest`, `FaultCatalogueTest` | chaos runs on every demo, every checkpoint of every demo, branches through their lineage; a mutated recording is caught at exactly the mutated event |
 | HTML report | `chronos report T0 --against T0.1`; `CliTest`; opened in a browser during development | generated, self-contained (no external reference, checked by the program), diagram/cone/path rendering inspected |
-| Benchmarks, soak, slow disk | `chronos-bench.jar all` (JDK 21), `... jmh` | `docs/BENCHMARKS.md`; **10,000-seed chaos soak: 0 violations**; NFR-05 to NFR-09 all met |
+| Benchmarks, soak, slow disk | `chronos-bench.jar all` (JDK 21, re-run on the final code, now including B11), `... jmh` | `docs/BENCHMARKS.md`; **10,000-seed chaos soak: 0 violations**; NFR-05 to NFR-09 all met |
 | Evaluation on unplanned failures | `chronos-bench.jar eval --seeds 400` | 800 chaos runs, 100 failures, root fault named in 94, but-for confirmed by counterfactual in 73 (`docs/EVALUATION.md`) |
 
 ### Test inventory (150)

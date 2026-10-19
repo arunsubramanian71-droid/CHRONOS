@@ -5,7 +5,7 @@ p sends a heartbeat every 100 ms; b promotes itself after 300 ms of silence; a 4
 AD-1  Run RE with a failing seed: the single-primary invariant breaks, and CHRONOS prints the causal chain from partition to violation
 ====================================================================================================
 recorded T0: re seed=42  -> TIMED_OUT, 72 events, final virtual time 1000 ms
-  log hash 9c8ce06cfc1e5735013a7afa0564d77c883735569ed0586897f90543dfbf3cd2   stored under chronos-data/timelines/T0
+  log hash 9c8ce06cfc1e5735013a7afa0564d77c883735569ed0586897f90543dfbf3cd2   stored under /var/folders/vf/x8njr9f12n70bj61ync7m7k80000gn/T/tmp.nXJiabgVmF/timelines/T0
   fault coverage: {partition-pb=1}
   INVARIANT VIOLATED: single-primary at inv:single-primary#1
   why inv:single-primary#1: VIOLATED single-primary: split brain: 2 primaries (p, b)
@@ -31,12 +31,12 @@ AD-2  Replay the run and show identical event-log hashes; then run a deliberatel
   two independent runs: hash 72844fa1c8b1b05da143ff02940a762091e20a2facf257183cdd3ba51a32e20f == 72844fa1c8b1b05da143ff02940a762091e20a2facf257183cdd3ba51a32e20f
   [PASS] running RE twice gives byte-identical logs
 recorded T1: bad seed=1  -> TIMED_OUT, 5 events, final virtual time 10 ms
-  log hash c4405c8ec9f6f9f9d826f216051e6b96f0ed94a19fb568e288d57f1ff4b5cd83   stored under chronos-data/timelines/T1
-  DETERMINISM VIOLATION: mismatch at B#3: expected a timer due at 91623 ms, got 759735 ms
+  log hash 07b03756ccbcc85b449f21cfc337e405c4edc73368bbdb97d750acd876f7b59f   stored under /var/folders/vf/x8njr9f12n70bj61ync7m7k80000gn/T/tmp.nXJiabgVmF/timelines/T1
+  DETERMINISM VIOLATION: mismatch at B#3: expected a timer due at 253858 ms, got 383413 ms
     last matching event : B#2
-    expected            : {"id":"B#3","kind":"TIMER_SET","l":4,"node":"B","p":[["B#2","PROGRAM_ORDER"],["B#2","STEP_EFFECT"]],"pl":{"due":91623,"name":"hidden-delay"},"seq":4,"tl":"T1","v":[2,3,0],"vt":10}
-    actual              : {"id":"B#3","kind":"TIMER_SET","l":4,"node":"B","p":[["B#2","PROGRAM_ORDER"],["B#2","STEP_EFFECT"]],"pl":{"due":759735,"name":"hidden-delay"},"seq":4,"tl":"T1","v":[2,3,0],"vt":10}
-    difference          : payload.due: expected 91623 got 759735
+    expected            : {"id":"B#3","kind":"TIMER_SET","l":4,"node":"B","p":[["B#2","PROGRAM_ORDER"],["B#2","STEP_EFFECT"]],"pl":{"due":253858,"name":"hidden-delay"},"seq":4,"tl":"T1","v":[2,3,0],"vt":10}
+    actual              : {"id":"B#3","kind":"TIMER_SET","l":4,"node":"B","p":[["B#2","PROGRAM_ORDER"],["B#2","STEP_EFFECT"]],"pl":{"due":383413,"name":"hidden-delay"},"seq":4,"tl":"T1","v":[2,3,0],"vt":10}
+    difference          : payload.due: expected 253858 got 383413
     likely cause        : a timing difference suggests hidden use of time or randomness
   [PASS] the bad citizen (reads the system clock) is flagged at its first mismatching event
 
@@ -106,17 +106,17 @@ AD-5  Compare the failing and the healed timelines: CHRONOS names the first caus
 ====================================================================================================
 AD-6  Generate the static, self-contained HTML report
 ====================================================================================================
-report written: ./chronos-data/reports/T0-vs-T0.1.html (65 KiB, self-contained, no network access)
+report written: /var/folders/vf/x8njr9f12n70bj61ync7m7k80000gn/T/tmp.nXJiabgVmF/reports/T0-vs-T0.1.html (65 KiB, self-contained, no network access)
   [PASS] the report exists and is a complete HTML page with an inline SVG space-time diagram
   [PASS] the report makes no network calls and references no external resource
   [PASS] the report shows the first causal divergence, the verdict and the replay status
-  open it with:  open ./chronos-data/reports/T0-vs-T0.1.html
+  open it with:  open /var/folders/vf/x8njr9f12n70bj61ync7m7k80000gn/T/tmp.nXJiabgVmF/reports/T0-vs-T0.1.html
 
 ====================================================================================================
 Known-answer scenarios (Section 25)
 ====================================================================================================
 recorded T2: ka2 seed=1  -> VIOLATED, 19 events, final virtual time 290 ms
-  log hash 5a45be870828dd4d09d7d24c954362fb90b028e43eb5a1351d1e77edecdd1159   stored under chronos-data/timelines/T2
+  log hash 5a45be870828dd4d09d7d24c954362fb90b028e43eb5a1351d1e77edecdd1159   stored under /var/folders/vf/x8njr9f12n70bj61ync7m7k80000gn/T/tmp.nXJiabgVmF/timelines/T2
   fault coverage: {delay-first-replicate=1}
   INVARIANT VIOLATED: replicas-converge at inv:replicas-converge#1
   why inv:replicas-converge#1: VIOLATED replicas-converge: replicas diverged: p={"x":2} b={"x":1}
@@ -150,7 +150,7 @@ recorded T2: ka2 seed=1  -> VIOLATED, 19 events, final virtual time 290 ms
   [PASS] KA-2 lost update: the root of the chain is the delay fault
   [PASS] KA-2: removing the delay makes the failure disappear (FAILURE_DISAPPEARS)
 recorded T3: ka3 seed=1  -> VIOLATED, 22 events, final virtual time 230 ms
-  log hash df8783e11de06c2424634067050b227d4337be77dd3e6164df97de9f75930970   stored under chronos-data/timelines/T3
+  log hash df8783e11de06c2424634067050b227d4337be77dd3e6164df97de9f75930970   stored under /var/folders/vf/x8njr9f12n70bj61ync7m7k80000gn/T/tmp.nXJiabgVmF/timelines/T3
   fault coverage: {crash-coord=1}
   INVARIANT VIOLATED: no-blocked-participant at inv:no-blocked-participant#1
   why inv:no-blocked-participant#1: VIOLATED no-blocked-participant: participants blocked in PREPARED: [part1]
@@ -184,7 +184,7 @@ recorded T3: ka3 seed=1  -> VIOLATED, 22 events, final virtual time 230 ms
   [PASS] KA-3 blocked commit: the root is the coordinator crash
   [PASS] KA-3: without the crash no participant stays undecided (FAILURE_DISAPPEARS)
 recorded T4: re2 seed=42  -> VIOLATED, 70 events, final virtual time 510 ms
-  log hash 6f420305ac1bf9fca3534c99fb64893614cbe8194c9e06fd9e77b5ce870591bb   stored under chronos-data/timelines/T4
+  log hash 6f420305ac1bf9fca3534c99fb64893614cbe8194c9e06fd9e77b5ce870591bb   stored under /var/folders/vf/x8njr9f12n70bj61ync7m7k80000gn/T/tmp.nXJiabgVmF/timelines/T4
   fault coverage: {partition-p-b1=1, partition-p-b2=1}
   INVARIANT VIOLATED: single-primary at inv:single-primary#1
   why inv:single-primary#1: VIOLATED single-primary: split brain: 2 primaries (p, b1)
@@ -209,4 +209,4 @@ recorded T4: re2 seed=42  -> VIOLATED, 70 events, final virtual time 510 ms
 
 ----------------------------------------------------------------------------------------------------
 demonstration finished: 24 of 24 checks passed - ALL PASSED
-timelines: ./chronos-data/timelines   report: ./chronos-data/reports/T0-vs-T0.1.html
+timelines: /var/folders/vf/x8njr9f12n70bj61ync7m7k80000gn/T/tmp.nXJiabgVmF/timelines   report: /var/folders/vf/x8njr9f12n70bj61ync7m7k80000gn/T/tmp.nXJiabgVmF/reports/T0-vs-T0.1.html
