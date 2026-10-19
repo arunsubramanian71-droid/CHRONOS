@@ -43,6 +43,7 @@ final class Cli {
                                 [--reseed NODE:STREAM:SEED] [--patch-state NODE:volatile.field=VALUE (synthetic)]...   run a what-if, print the verdict
               compare <A> <B> [--strict]                  first causal divergence, cone and explanation path
               causes <timeline> [--max-size K] [--threads N]    which fault rules are critical (combinations)
+              serve [--port 8080] [--bind 127.0.0.1] [--seconds N]   live local viewer (read-only web page on the JDK HTTP server)
               local-replay <timeline> [node]      re-execute one node (or each node) alone from its recorded inputs and check its outputs (R5)
               search <timeline> [--max N] [--threads N] [--keep]   intervention search: which single changes to the causal past make the failure disappear
               campaign <scenario> --seeds A-B [--threads N] [--chaos] [--param k=v]... [--keep]
@@ -101,6 +102,7 @@ final class Cli {
             case "causes" -> causes(args);
             case "search" -> search(args);
             case "local-replay" -> localReplay(args);
+            case "serve" -> serve(args);
             case "campaign" -> campaign(args);
             case "report" -> report(args);
             case "delete" -> {
@@ -644,6 +646,32 @@ final class Cli {
         for (Map.Entry<String, Integer> en : g.frontier(cut).entrySet()) sb.append("    ").append(en.getKey()).append(": ").append(g.event(en.getValue()).eventId()).append(" at t=").append(g.event(en.getValue()).virtualTime()).append('\n');
         sb.append("  consistent: ").append(g.isConsistentCut(cut)).append('\n');
         return sb.toString();
+    }
+
+    private int serve(Args a) {
+        String bind = a.get("bind", "127.0.0.1");
+        int port = (int) a.num("port", 8080);
+        try (Viewer v = new Viewer(store, bind, port)) {
+            v.start();
+            out.println("CHRONOS live viewer (read-only) on http://" + bind + ":" + v.port() + "/   (Ctrl-C to stop)");
+            out.flush();
+            if (a.has("seconds")) {
+                try {
+                    Thread.sleep(a.num("seconds", 0) * 1000);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            } else {
+                try {
+                    Thread.currentThread().join();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        } catch (IOException e) {
+            throw new CliException("cannot start the viewer on " + bind + ":" + port + ": " + e.getMessage());
+        }
+        return 0;
     }
 
     private int localReplay(Args a) {

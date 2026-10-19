@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CHRONOS live viewer</title>
+<style>
+  :root { --bg:#fafafa; --fg:#1b1f23; --mut:#68707a; --line:#c9ced6; --acc:#2f6fdb; --bad:#c62828; --ok:#2e7d32; --card:#fff; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#16181c; --fg:#e6e8eb; --mut:#99a1ac; --line:#3a3f47; --acc:#7aa7ff; --bad:#ff6b6b; --ok:#6fcf7a; --card:#1e2126; } }
+  body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.45 system-ui, sans-serif; }
+  header { padding:10px 16px; border-bottom:1px solid var(--line); display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+  header h1 { font-size:16px; margin:0 12px 0 0; }
+  main { padding:12px 16px; max-width:1200px; margin:0 auto; }
+  select, button, input { font:inherit; color:inherit; background:var(--card); border:1px solid var(--line); border-radius:4px; padding:3px 6px; }
+  button { cursor:pointer; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:6px; padding:10px 12px; margin:10px 0; }
+  .row { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:10px; }
+  pre { margin:0; white-space:pre-wrap; word-break:break-word; font:12px/1.4 ui-monospace, Menlo, monospace; }
+  h2 { font-size:13px; margin:0 0 6px; color:var(--mut); text-transform:uppercase; letter-spacing:.04em; }
+  #slider { width:100%; }
+  svg { width:100%; height:auto; display:block; }
+  .bad { color:var(--bad); } .ok { color:var(--ok); } .mut { color:var(--mut); }
+  .note { font-size:12px; color:var(--mut); }
+</style>
+</head>
+<body>
+<header>
+  <h1>CHRONOS live viewer</h1>
+  <label>timeline <select id="tl"></select></label>
+  <label>compare with <select id="other"></select></label>
+  <button id="cmp">compare</button>
+  <span class="note">read-only: it never changes a timeline</span>
+</header>
+<main>
+  <div class="card"><div id="summary" class="note">loading…</div></div>
+  <div class="card">
+    <h2>Time (drag through the events)</h2>
+    <input id="slider" type="range" min="0" max="0" value="0">
+    <div id="cursor"></div>
+  </div>
+  <div class="card"><h2>Space-time diagram (click an event)</h2><div id="diagram"></div></div>
+  <div class="row">
+    <div class="card"><h2>Node states</h2><pre id="states"></pre></div>
+    <div class="card"><h2>In flight / timers / clocks</h2><pre id="flight"></pre></div>
+  </div>
+  <div class="card"><h2>Why (for the selected event)</h2><pre id="why">click an event, or press "why" below</pre>
+    <button id="whyBtn">why this event</button> <button id="knowsBtn">what did its node know</button></div>
+  <div class="card" id="cmpCard" hidden><h2>Comparison</h2><pre id="cmpOut"></pre></div>
+</main>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+let current = null, events = [], nodes = [], selected = null, timer = null;
+async function get(url, json) {
+  const r = await fetch(url);
+  const t = await r.text();
+  if (!r.ok) throw new Error(t);
+  return json ? JSON.parse(t) : t;
+}
+function make(ns, tag, attrs, text) {
+  const e = document.createElementNS(ns, tag);
+  for (const k in (attrs || {})) e.setAttribute(k, attrs[k]);
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+const el = (tag, attrs, text) => make('http://www.w3.org/1999/xhtml', tag, attrs, text);
+const sv = (tag, attrs, text) => make('http://www.w3.org/2000/svg', tag, attrs, text);
+async function init() {
+  const tls = await get('/api/timelines', true);
+  for (const sel of [$('tl'), $('other')]) {
+    sel.replaceChildren();
+    for (const t of tls) sel.appendChild(el('option', {value: t.id}, t.id + ' — ' + t.scenario + ' seed ' + t.seed + (t.violation ? ' ✗' : '')));
+  }
+  if (tls.length > 1) $('other').selectedIndex = 1;
+  window.TLS = tls;
+  if (tls.length) await load(tls[0].id); else $('summary').textContent = 'no timelines recorded yet: run `chronos run re` first';
+}
+async function load(id) {
+  current = id;
+  const info = window.TLS.find(t => t.id === id);
+  $('summary').replaceChildren(
+    el('span', {}, id + ': ' + info.scenario + ', seed ' + info.seed + ', ' + info.events + ' events, ' + info.status + (info.parent ? ', branch of ' + info.parent : '') + '  '),
+    el('span', {class: info.violation ? 'bad' : 'ok'}, info.violation ? 'violation: ' + info.violation : 'no violation'));
+  const d = await get('/api/timeline/' + encodeURIComponent(id) + '/events', true);
+  events = d.events; nodes = d.nodes.concat(['env']);
+  $('slider').max = Math.max(0, events.length - 1);
+  $('slider').value = 0;
+  drawDiagram(d.truncated ? d.total : 0);
+  await move(info.violationEvent ? events.findIndex(e => e.id === info.violationEvent) : 0);
+}
+function drawDiagram(truncatedTotal) {
+  const W = 1100, rowH = 46, pad = 70, H = pad / 2 + nodes.length * rowH;
+  const n = Math.max(1, events.length - 1);
+  const x = i => pad + (W - pad - 20) * i / n;
+  const y = node => 24 + nodes.indexOf(node) * rowH;
+  const svg = sv('svg', {viewBox: '0 0 ' + W + ' ' + H});
+  nodes.forEach(nd => {
+    svg.appendChild(sv('line', {x1: pad, x2: W - 10, y1: y(nd), y2: y(nd), stroke: 'var(--line)'}));
+    svg.appendChild(sv('text', {x: 4, y: y(nd) + 4, fill: 'var(--mut)', 'font-size': 12}, nd));
+  });
+  const idx = {}; events.forEach((e, i) => idx[e.id] = i);
+  events.forEach((e, i) => e.parents.forEach(p => {
+    if (p[1] !== 'MESSAGE' && p[1] !== 'FAULT' && p[1] !== 'OMISSION' && p[1] !== 'TIMER') return;
+    const j = idx[p[0]]; if (j === undefined) return;
+    const pe = events[j];
+    svg.appendChild(sv('line', {x1: x(j), y1: y(pe.node), x2: x(i), y2: y(e.node), stroke: p[1] === 'MESSAGE' ? 'var(--acc)' : p[1] === 'OMISSION' ? 'var(--mut)' : 'var(--bad)',
+      'stroke-width': 1, opacity: 0.55, 'stroke-dasharray': p[1] === 'OMISSION' ? '4 3' : ''}));
+  }));
+  events.forEach((e, i) => {
+    const c = sv('circle', {cx: x(i), cy: y(e.node), r: e.kind === 'INVARIANT_VIOLATED' ? 6 : 3.5, fill: e.kind === 'INVARIANT_VIOLATED' ? 'var(--bad)' : e.kind.startsWith('FAULT') ? 'var(--bad)' : 'var(--fg)', style: 'cursor:pointer'});
+    c.appendChild(sv('title', {}, e.id + ' t=' + e.t + '  ' + e.text));
+    c.addEventListener('click', () => { select(e); move(i); });
+    svg.appendChild(c);
+  });
+  svg.appendChild(sv('line', {id: 'curline', x1: x(0), x2: x(0), y1: 6, y2: H - 4, stroke: 'var(--acc)', 'stroke-width': 1.5}));
+  svg._x = x;
+  $('diagram').replaceChildren(svg);
+  if (truncatedTotal) $('diagram').appendChild(el('div', {class: 'note'}, 'showing the first ' + events.length + ' of ' + truncatedTotal + ' events'));
+}
+async function move(i) {
+  if (i < 0) i = 0;
+  $('slider').value = i;
+  const e = events[i];
+  if (!e) return;
+  const svg = $('diagram').querySelector('svg');
+  if (svg) { const cx = svg._x(i); const l = svg.querySelector('#curline'); l.setAttribute('x1', cx); l.setAttribute('x2', cx); }
+  const w = await get('/api/timeline/' + encodeURIComponent(current) + '/at/' + i, true);
+  $('cursor').textContent = 'position ' + i + ': ' + w.event + '  ' + w.text;
+  $('states').textContent = Object.keys(w.states).map(n => n + ': ' + JSON.stringify(w.states[n])).join('\n');
+  $('flight').textContent = 'in flight (' + w.inflight.length + '):\n  ' + (w.inflight.join('\n  ') || '—') +
+    '\n\npending timers (' + w.timers.length + '):\n  ' + (w.timers.join('\n  ') || '—') +
+    '\n\nclocks:\n' + Object.keys(w.clocks).map(n => '  ' + n + ': ' + w.clocks[n]).join('\n');
+  selected = e;
+}
+function select(e) { selected = e; $('why').textContent = e.id + ' selected. Press "why this event".'; }
+$('tl').addEventListener('change', ev => load(ev.target.value));
+$('slider').addEventListener('input', ev => { clearTimeout(timer); const v = +ev.target.value; timer = setTimeout(() => move(v), 40); });
+$('whyBtn').addEventListener('click', async () => { if (selected) $('why').textContent = await get('/api/timeline/' + encodeURIComponent(current) + '/why/' + encodeURIComponent(selected.id)); });
+$('knowsBtn').addEventListener('click', async () => { if (selected) $('why').textContent = await get('/api/timeline/' + encodeURIComponent(current) + '/knows/' + encodeURIComponent(selected.id)); });
+$('cmp').addEventListener('click', async () => {
+  $('cmpCard').hidden = false;
+  try { $('cmpOut').textContent = await get('/api/compare?a=' + encodeURIComponent($('tl').value) + '&b=' + encodeURIComponent($('other').value)); }
+  catch (err) { $('cmpOut').textContent = String(err); }
+});
+init().catch(err => { $('summary').textContent = 'error: ' + err; });
+</script>
+</body>
+</html>

@@ -56,6 +56,7 @@ D-01 to D-22 "Approved" but D-23 to D-26 "New in v0.2". All four were implemente
 | DEV-30 | **Intervention search (FR-38)** is a bounded, single-change but-for search: suspects are the message sends whose delivery is in the causal past (tried as DROP), scripted client inputs (REMOVE_INPUT) and fault rules (REMOVE_FAULT) in the causal past of the first violation, capped at 64 (those causally closest are kept). It cannot find a cause that needs two changes (KA-4: use `chronos causes`) and does not propose delays, reorderings or other interventions. Every finding is a real counterfactual branch, not an estimate. |
 | DEV-31 | **Consistent cuts and the knowledge view.** A cut is consistent when it is closed under every parent edge (PROGRAM_ORDER, STEP_EFFECT, MESSAGE, TIMER, FAULT, WITNESS, OMISSION), which equals closure under happens-before (the graph self-check). The knowledge view defines "what A has heard about B at event e" as B's last event in the causal past of e; the state it prints as "believes" is B's recorded state as of that event, which is a reconstruction from the log, not a value any node stored. |
 | DEV-32 | **Node-local replay (R5)** feeds one node its recorded inputs (start, restart, crash, delivered messages with the recorded body, timer firings, client inputs) and checks its sends, timers, notes, random draws and the state digest after every step. Random values are answered from the log, so the node's use of its *streams* is checked by name and ordinal, not by recomputing the generator. Clock skew and `CONFIG_PATCH` are reproduced from the log; a node edited by a synthetic `PATCH_STATE` is refused. Timing of delivery, latencies and fault decisions are taken from the log as given, not checked. |
+| DEV-33 | **Live local viewer (FR-50)** is read-only by design: it can browse, scrub, explain (`why`, `knows`) and compare, but cannot record, branch, intervene or delete (those stay in the CLI, so the web surface cannot change a timeline). It binds to 127.0.0.1 unless `--bind` says otherwise, serves one fixed page that loads no external resource, answers only for timelines in the store, and handles requests one at a time on the JDK HTTP server's dispatch thread. The diagram shows the first 5,000 events of a timeline. It is not a replacement for the HTML report, which stays the portable artefact (D-18). |
 
 ## Simplifications (SIMPLIFIED in the traceability matrix)
 
@@ -71,7 +72,7 @@ D-01 to D-22 "Approved" but D-23 to D-26 "New in v0.2". All four were implemente
 ## Not implemented (NOT IMPLEMENTED)
 
 The Pinned continuation policy (deferred by D-15);
-the live local viewer FR-50 (Stretch, D-18); log compression (cut line);
+log compression (cut line);
 persisted index files; the blind debugging protocol of Phase 17 (it needs a second person); verification on **Windows**.
 (macOS and Linux were verified; see `IMPLEMENTATION_STATUS.md`.)
 

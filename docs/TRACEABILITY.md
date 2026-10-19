@@ -33,7 +33,7 @@ Paths are relative to the module's `src/main/java/chronos/<package>/`.
 | D-15 | Continue policy | analysis `BranchDecisionSource`, `TimelineManager` | `LawsTest.m6, m7` | COMPLETE (Pinned deferred by the spec) |
 | D-16 | First causal divergence, per-timeline taint, anchor rule | analysis `TimelineComparator` | `ComparatorTest`, `AcceptanceTest.ad5`, `LawsTest.m10` | COMPLETE (fallback when no anchor: DEV-10) |
 | D-17 | Global invariants, last writers, recording accessor, WITNESS edges | runtime `Engine.checkInvariants`, `RecordingView` | `EngineTest.invariantViolation...`, `LawsTest.m14` | COMPLETE |
-| D-18 | Static self-contained HTML report; live viewer is Stretch | cli `HtmlReport` | `CliTest`, `AcceptanceTest` (demo AD-6) | COMPLETE (viewer NOT IMPLEMENTED, Stretch) |
+| D-18 | Static self-contained HTML report; live viewer is Stretch | cli `HtmlReport` | `CliTest`, `AcceptanceTest` (demo AD-6) | COMPLETE (the Stretch live viewer is FR-50 below) |
 | D-19 | One decision source, one engine for record/replay/branch | runtime `DecisionSource`; analysis `ReplayDecisionSource`, `BranchDecisionSource` | `LawsTest.m1, m5, m6` | COMPLETE |
 | D-20 | Java 21, Maven, JUnit 5, JMH, hand-written fakes, own property generator | all poms; `EngineTest` `Fakes`; `SeededRandom` | `BuildRulesTest` | COMPLETE |
 | D-21 | Threads: engine single, one async writer, fixed worker pool | store `TimelineWriter`; analysis `CounterfactualEngine`, `Campaign` | `LawsTest.m12`, `TimelineStoreTest.theBoundedQueue...` | COMPLETE |
@@ -93,7 +93,7 @@ Paths are relative to the module's `src/main/java/chronos/<package>/`.
 | 47 | CLI: run, replay, inspect, branch, inject, compare | `Main`, `Cli`; `CliTest` | COMPLETE |
 | 48 | One command runs a scenario twice and compares hashes | CLI `determinism` (+ `--jvm N`); `CliTest.determinismAcrossFreshJvmLaunches` | COMPLETE |
 | 49 | Demos: ping-pong, causal-ordering, RE, two more known-answer | demo module | COMPLETE (KA-2, KA-3, KA-4 + control + bad citizen) |
-| 50 | Live local web viewer | — | NOT IMPLEMENTED (Stretch) |
+| 50 | Live local web viewer (Stretch) | `Viewer` + `viewer.html` (cli), `chronos serve` | COMPLETE as a read-only viewer (DEV-33); `ViewerTest` (endpoints, bad requests, 405 on writes, store unchanged); the page was opened and driven in a browser |
 | 51 | INTERVENTION_APPLIED on env, id `iv:<id>`, origin in digest | `Engine.applyInterventions` | COMPLETE |
 | 52 | OMISSION edges: partition scope (12a), crash and pause scopes (12b) | `FaultInjector`; `FaultCatalogueTest`, `KnownAnswerTest` | COMPLETE (partition scope refined: DEV-03) |
 
