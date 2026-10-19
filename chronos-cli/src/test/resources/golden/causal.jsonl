@@ -1,0 +1,12 @@
+{"id":"A#1","kind":"NODE_STARTED","l":1,"node":"A","p":[],"pl":{},"sd":"c82fda4bd646e216af2d3254cdcda2402b2da1408b755042d4fe9600656a1b17","seq":0,"st":{"durable":{},"volatile":{}},"tl":"T0","v":[1,0,0,0],"vt":0}
+{"id":"B#1","kind":"NODE_STARTED","l":1,"node":"B","p":[],"pl":{},"sd":"c82fda4bd646e216af2d3254cdcda2402b2da1408b755042d4fe9600656a1b17","seq":1,"st":{"durable":{},"volatile":{}},"tl":"T0","v":[0,1,0,0],"vt":0}
+{"id":"C#1","kind":"NODE_STARTED","l":1,"node":"C","p":[],"pl":{},"sd":"c82fda4bd646e216af2d3254cdcda2402b2da1408b755042d4fe9600656a1b17","seq":2,"st":{"durable":{},"volatile":{}},"tl":"T0","v":[0,0,1,0],"vt":0}
+{"id":"A#2","kind":"APP_NOTE","l":2,"node":"A","p":[["A#1","PROGRAM_ORDER"],["A#1","STEP_EFFECT"]],"pl":{"text":"a1 local event"},"seq":3,"tl":"T0","v":[2,0,0,0],"vt":0}
+{"id":"A#3","kind":"MESSAGE_SENT","l":3,"node":"A","p":[["A#2","PROGRAM_ORDER"],["A#1","STEP_EFFECT"]],"pl":{"body":{},"deliverAt":10,"to":"B","type":"m1"},"seq":4,"tl":"T0","v":[3,0,0,0],"vt":0}
+{"id":"C#2","kind":"APP_NOTE","l":2,"node":"C","p":[["C#1","PROGRAM_ORDER"],["C#1","STEP_EFFECT"]],"pl":{"text":"c1 local event"},"seq":5,"tl":"T0","v":[0,0,2,0],"vt":0}
+{"id":"C#3","kind":"TIMER_SET","l":3,"node":"C","p":[["C#2","PROGRAM_ORDER"],["C#1","STEP_EFFECT"]],"pl":{"due":5,"name":"local-work"},"seq":6,"tl":"T0","v":[0,0,3,0],"vt":0}
+{"id":"C#4","kind":"TIMER_FIRED","l":4,"node":"C","p":[["C#3","PROGRAM_ORDER"],["C#3","TIMER"]],"pl":{"name":"local-work","timerId":"C#3"},"sd":"c82fda4bd646e216af2d3254cdcda2402b2da1408b755042d4fe9600656a1b17","seq":7,"tl":"T0","v":[0,0,4,0],"vt":5}
+{"id":"C#5","kind":"APP_NOTE","l":5,"node":"C","p":[["C#4","PROGRAM_ORDER"],["C#4","STEP_EFFECT"]],"pl":{"text":"c local work"},"seq":8,"tl":"T0","v":[0,0,5,0],"vt":5}
+{"id":"B#2","kind":"MESSAGE_DELIVERED","l":4,"node":"B","p":[["B#1","PROGRAM_ORDER"],["A#3","MESSAGE"]],"pl":{"messageId":"A#3"},"sd":"c82fda4bd646e216af2d3254cdcda2402b2da1408b755042d4fe9600656a1b17","seq":9,"tl":"T0","v":[3,2,0,0],"vt":10}
+{"id":"B#3","kind":"MESSAGE_SENT","l":5,"node":"B","p":[["B#2","PROGRAM_ORDER"],["B#2","STEP_EFFECT"]],"pl":{"body":{},"deliverAt":20,"to":"C","type":"m2"},"seq":10,"tl":"T0","v":[3,3,0,0],"vt":10}
+{"id":"C#6","kind":"MESSAGE_DELIVERED","l":6,"node":"C","p":[["C#5","PROGRAM_ORDER"],["B#3","MESSAGE"]],"pl":{"messageId":"B#3"},"sd":"c82fda4bd646e216af2d3254cdcda2402b2da1408b755042d4fe9600656a1b17","seq":11,"tl":"T0","v":[3,3,6,0],"vt":20}

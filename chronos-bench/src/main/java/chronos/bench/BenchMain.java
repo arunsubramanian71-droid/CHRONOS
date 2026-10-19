@@ -345,14 +345,13 @@ public final class BenchMain {
             for (int i = 0; i < 100; i++) {
                 long t = System.nanoTime();
                 s.goTo((int) Math.floorMod(rnd.nextLong(), (long) events.size()));
-                s.stateOf("g0");
-                s.clocks();
+                s.world(); // every node's state, the in-flight messages, the pending timers and the clocks at that moment (G3)
                 worst = Math.max(worst, (System.nanoTime() - t) / 1e6);
             }
             return worst;
         });
         double limit = size <= 100_000 ? 1000 : 5000;
-        row("B6", "How fast can we seek?", events.size() + " events", "worst of 100 jumps", seek, "ms", (seek.p99 < limit ? "meets" : "MISSES") + " NFR-06 (<" + (long) limit + " ms); opening the session (graph + indexes): " + fmt(open) + " ms");
+        row("B6", "How fast can we seek?", events.size() + " events", "worst of 100 jumps + world", seek, "ms", (seek.p99 < limit ? "meets" : "MISSES") + " NFR-06 (<" + (long) limit + " ms); opening the session (graph + indexes): " + fmt(open) + " ms");
     }
 
     // ------------------------------------------------------------------------------------------------------------
@@ -481,7 +480,7 @@ public final class BenchMain {
         for (int i = 0; i < 100; i++) {
             long t = System.nanoTime();
             s.goTo((int) Math.floorMod(rnd.nextLong(), (long) ev.size()));
-            s.stateOf("g0");
+            s.world();
             worst = Math.max(worst, (System.nanoTime() - t) / 1e6);
         }
         row("XL", "Seek in a million-event timeline", ev.size() + " events", "worst of 100 jumps", fmt(worst), "", "", "ms", (worst < 5000 ? "meets" : "MISSES") + " NFR-06 (< 5000 ms); session open " + fmt(open) + " ms");
