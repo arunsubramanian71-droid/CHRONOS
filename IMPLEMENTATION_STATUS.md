@@ -44,7 +44,7 @@ HTML report, benchmarks and documentation. **Full v0.2 compliance is NOT claimed
 | chronos-cli | 6 / 1,176 / 1,393 | Hand-written CLI (run, ls, show, inspect, session, verify, determinism, branch/counterfactual, compare, causes, campaign, report, delete, demo), HTML report, flagship demo. |
 | chronos-bench | 3 / 670 / 171 | JMH benchmarks, whole-system harness (B1-B14, million-event run, soak), build-rule checks. |
 
-Totals: about 8,700 lines of main code and 2,800 lines of tests. The git history has seven commits on `main` (local only).
+Totals: about 8,700 lines of main code and 2,800 lines of tests. The git history is on `main`, local only (see `git log`).
 
 ## Acceptance demonstrations and known-answer scenarios
 
