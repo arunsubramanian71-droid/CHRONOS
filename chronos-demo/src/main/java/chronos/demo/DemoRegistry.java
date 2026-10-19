@@ -18,7 +18,7 @@ import java.util.Map;
 public final class DemoRegistry implements ScenarioRegistry {
     @Override
     public List<String> names() {
-        return List.of("pingpong", "causal", "re", "re2", "ka2", "ka3", "control", "gossip", "bad");
+        return List.of("pingpong", "causal", "re", "re2", "ka2", "ka3", "control", "gossip", "bad", "tutorial");
     }
 
     @Override
@@ -38,6 +38,7 @@ public final class DemoRegistry implements ScenarioRegistry {
             case "control" -> new Control();
             case "gossip" -> new Gossip(Integer.parseInt(p.getOrDefault("nodes", "5")), Long.parseLong(p.getOrDefault("horizon", "2000")));
             case "bad" -> new BadCitizen();
+            case "tutorial" -> new Tutorial();
             default -> throw new IllegalArgumentException("unknown scenario '" + name + "'; known: " + names());
         };
     }

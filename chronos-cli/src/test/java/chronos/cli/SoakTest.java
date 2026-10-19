@@ -30,6 +30,7 @@ class SoakTest {
         SCENARIOS.put("control", Map.of());
         SCENARIOS.put("gossip", Map.of("nodes", "4", "horizon", "300"));
         SCENARIOS.put("twopairs", Map.of());
+        SCENARIOS.put("tutorial", Map.of());
     }
 
     @Test

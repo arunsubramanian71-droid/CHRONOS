@@ -24,7 +24,7 @@ class LawsTest {
     private static final List<Map.Entry<String, Map<String, String>>> ALL = List.of(
             Map.entry("pingpong", Map.of()), Map.entry("causal", Map.of()), Map.entry("re", Map.of()), Map.entry("re", Map.of("partition", "off")),
             Map.entry("re2", Map.of()), Map.entry("ka2", Map.of()), Map.entry("ka3", Map.of()), Map.entry("control", Map.of()),
-            Map.entry("gossip", Map.of("nodes", "4", "horizon", "400")), Map.entry("twopairs", Map.of()));
+            Map.entry("gossip", Map.of("nodes", "4", "horizon", "400")), Map.entry("twopairs", Map.of()), Map.entry("tutorial", Map.of()));
 
     private long boundaryOfFault(Env env, String tl, String faultEventId) {
         return env.events(tl).stream().filter(e -> e.eventId().equals(faultEventId)).findFirst().orElseThrow().seq();
