@@ -17,6 +17,7 @@
     <module>chronos-demo</module>
     <module>chronos-analysis</module>
     <module>chronos-cli</module>
+    <module>chronos-bench</module>
   </modules>
 
   <properties>

@@ -64,6 +64,16 @@ public final class ReplayEngine {
                 v = new DeterminismViolation("replay ended after " + r.engine.nextSeq() + " events but the recording has more (next recorded event " + next.eventId() + ")",
                         next, null, r.sink.lastMatching(), List.of("replay produced no event at position " + next.seq()));
             } else {
+                // the original run may have gone on stepping through agenda items that recorded nothing (for example a restart rule for
+                // a node that was not crashed); run the replay to the same end so the end state is comparable. Any event such a
+                // trailing step produces is a genuine mismatch: the recording has already ended.
+                try {
+                    while (r.engine.step()) { /* silent steps only */ }
+                } catch (DeterminismViolation dv) {
+                    v = dv;
+                }
+            }
+            if (v == null) {
                 TimelineSummary sum = log.summary(timelineId);
                 if (sum != null && !r.engine.endStateDigest().equals(sum.endStateDigest()))
                     v = new DeterminismViolation("end-state digest differs from the recorded summary", null, null, r.sink.lastMatching(),

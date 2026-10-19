@@ -308,10 +308,11 @@ public final class Engine {
         String msgId = (String) d.get("messageId");
         String from = (String) d.get("from");
         String to = (String) d.get("to");
-        boolean dup = Boolean.TRUE.equals(d.get("dup"));
+        long copy = d.containsKey("copy") ? Canon.num(d.get("copy")) : (Boolean.TRUE.equals(d.get("dup")) ? 1 : 0);
+        boolean dup = copy > 0;
         Ref sendRef = Ref.fromMap(Canon.map(d.get("sendRef")));
         NodeSlot t = byName.get(to);
-        String dropId = "drop:" + msgId + (dup ? "~dup" : "");
+        String dropId = "drop:" + msgId + (copy == 0 ? "" : copy == 1 ? "~dup" : "~dup" + copy); // every copy of a message has its own identity
 
         if (t.crashed) {
             List<Link> links = envBase();
@@ -599,13 +600,16 @@ public final class Engine {
     }
 
     private AgendaItem deliveryItem(String identity, long due, int targetIdx, String msgId, String from, String to, String type,
-                                    Map<String, Object> body, Ref sendRef, List<Ref> faultRefs, String origin, boolean dup) {
+                                    Map<String, Object> body, Ref sendRef, List<Ref> faultRefs, String origin, long copy) {
         Map<String, Object> d = mapOf("messageId", msgId, "from", from, "to", to, "type", type, "body", body, "sendRef", sendRef.toMap(), "sentAt", time);
         List<Object> fr = new ArrayList<>();
         for (Ref r : faultRefs) fr.add(r.toMap());
         d.put("faultRefs", fr);
         if (origin != null) d.put("origin", origin);
-        if (dup) d.put("dup", true);
+        if (copy > 0) {
+            d.put("dup", true);
+            d.put("copy", copy);
+        }
         return new AgendaItem(due, targetIdx, AgendaItem.Kind.DELIVERY, identity, d);
     }
 
@@ -692,8 +696,8 @@ public final class Engine {
             long due = deliverAt;
             List<Ref> faultRefs = new ArrayList<>();
             String origin = null;
-            boolean dup = false;
             List<Ref> dupRefs = new ArrayList<>();
+            List<Long> dupCopies = new ArrayList<>();
             for (FaultRule r : hits) {
                 if (r.action() == FaultRule.FaultAction.DELAY) {
                     Event fe = faultEvent(r, sref, mapOf("rule", r.id(), "action", "DELAY", "messageId", id, "by", r.num("by")));
@@ -707,15 +711,19 @@ public final class Engine {
                     List<Link> links = envBase();
                     links.add(new Link(sref, EdgeKind.MESSAGE));
                     links.add(new Link(fe.ref(), EdgeKind.FAULT));
-                    Event de = emitEnv("dup:" + id, EventKind.MESSAGE_DUPLICATED, mapOf("messageId", id), links, faults.origin(r.id()));
+                    long copy = envCounters.merge("dup:" + id, 1L, Long::sum); // each copy of a message has its own env identity (D-24)
+                    Event de = emitEnv("dup:" + id + (copy == 1 ? "" : "~" + copy), EventKind.MESSAGE_DUPLICATED, mapOf("messageId", id, "copy", copy), links, faults.origin(r.id()));
                     sink.add(de);
-                    dup = true;
                     dupRefs.add(de.ref());
+                    dupCopies.add(copy);
                     if (origin == null) origin = faults.origin(r.id());
                 }
             }
-            agenda.add(deliveryItem(id, due, target.idx, id, slot.name, to, type, nbody, sref, faultRefs, origin, false));
-            if (dup) agenda.add(deliveryItem(id + "+dup", due, target.idx, id, slot.name, to, type, nbody, sref, dupRefs, origin, true));
+            agenda.add(deliveryItem(id, due, target.idx, id, slot.name, to, type, nbody, sref, faultRefs, origin, 0));
+            for (int k = 0; k < dupCopies.size(); k++) {
+                long c = dupCopies.get(k);
+                agenda.add(deliveryItem(id + "+dup" + (c == 1 ? "" : c), due, target.idx, id, slot.name, to, type, nbody, sref, List.of(dupRefs.get(k)), origin, c));
+            }
             return id;
         }
 
@@ -862,13 +870,15 @@ public final class Engine {
                     List<Link> links = envBase();
                     links.add(new Link(sref, EdgeKind.MESSAGE));
                     links.add(new Link(ivRef, EdgeKind.FAULT));
-                    Event de = emitEnv("dup:" + msgId, EventKind.MESSAGE_DUPLICATED, mapOf("messageId", msgId), links, origin);
+                    long copy = envCounters.merge("dup:" + msgId, 1L, Long::sum);
+                    Event de = emitEnv("dup:" + msgId + (copy == 1 ? "" : "~" + copy), EventKind.MESSAGE_DUPLICATED, mapOf("messageId", msgId, "copy", copy), links, origin);
                     group.add(de);
                     Map<String, Object> nd = new TreeMap<>(it.data());
                     nd.put("dup", true);
+                    nd.put("copy", copy);
                     nd.put("faultRefs", new ArrayList<>(List.of(de.ref().toMap())));
                     nd.put("origin", origin);
-                    agenda.add(new AgendaItem(it.due(), it.nodeIdx(), AgendaItem.Kind.DELIVERY, msgId + "+dup", nd));
+                    agenda.add(new AgendaItem(it.due(), it.nodeIdx(), AgendaItem.Kind.DELIVERY, msgId + "+dup" + (copy == 1 ? "" : copy), nd));
                 } else {
                     faults.addRule(FaultRule.onMessage("iv_" + iv.id(), FaultRule.FaultAction.DUPLICATE, msgId, null), origin);
                 }

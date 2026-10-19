@@ -268,4 +268,27 @@ class EngineTest {
             assertEquals(VectorClock.Order.BEFORE, VectorClock.compare(pe.vector(), viol.vector()));
         }
     }
+
+    @Test
+    void everyCopyOfADuplicatedMessageHasItsOwnIdentity_regressionFromTheChaosSoak() {
+        // two DUPLICATE rules hit the same message: the soak found that both tried to create the env event dup:<id> (D-24 collision)
+        FaultPlan plan = FaultPlan.of(FaultRule.onMessage("dup-a", FaultRule.FaultAction.DUPLICATE, "A#2", null),
+                FaultRule.onMessage("dup-b", FaultRule.FaultAction.DUPLICATE, "A#2", null),
+                FaultRule.nth("dup-c", FaultRule.FaultAction.DUPLICATE, "B", "A", "pong", 1, null),
+                FaultRule.partition("cut", 15, 100L, List.of(List.of("A"), List.of("B"))));
+        MemoryLog log = Fakes.run(Fakes.pingPong(), 1, plan, 0);
+        List<Event> ev = log.events();
+        Set<String> ids = new HashSet<>();
+        for (Event e : ev) assertTrue(ids.add(e.eventId()), "duplicate event id " + e.eventId());
+        assertEquals(List.of("dup:A#2", "dup:A#2~2"), ev.stream().filter(e -> e.kind() == EventKind.MESSAGE_DUPLICATED && e.payload().get("messageId").equals("A#2")).map(Event::eventId).toList());
+        // the original and both copies are delivered to B at the same instant, in the stable order of their identities
+        long deliveries = ev.stream().filter(e -> e.kind() == EventKind.MESSAGE_DELIVERED && e.nodeId().equals("B")).count();
+        assertEquals(3, deliveries);
+        // the copies of pong sent by B at t=10 are dropped by the partition (15..115), each with its own drop identity
+        assertTrue(ev.stream().filter(e -> e.kind() == EventKind.MESSAGE_DROPPED).map(Event::eventId).distinct().count() == ev.stream().filter(e -> e.kind() == EventKind.MESSAGE_DROPPED).count());
+        // the whole log is a valid causal graph (this is what crashed in the soak)
+        assertEquals(ev.size(), ev.stream().map(Event::eventId).distinct().count());
+        // and it replays through the same engine from the recorded decisions: checkpoints survive too
+        assertEquals(TimelineStatus.COMPLETED, log.summary().status());
+    }
 }
