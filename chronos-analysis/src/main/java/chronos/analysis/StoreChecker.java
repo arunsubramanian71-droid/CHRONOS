@@ -63,7 +63,7 @@ public final class StoreChecker {
                 sb.append("store  ").append(f.status()).append(' ').append(f.check()).append(": ").append(f.message()).append('\n');
                 if (f.action() != null) sb.append("        action: ").append(f.action()).append('\n');
             }
-            sb.append(ok() ? (count(Status.WARN) == 0 ? "STORE OK" : "STORE OK WITH WARNINGS") : "STORE DAMAGED").append(": ").append(timelines.size()).append(" timelines, ")
+            sb.append(ok() ? (count(Status.WARN) == 0 ? "STORE OK" : "STORE OK WITH WARNINGS") : count(Status.FAIL) == replayFailures() ? "STORE INTACT, REPLAY FAILS" : "STORE DAMAGED").append(": ").append(timelines.size()).append(" timelines, ")
                     .append(count(Status.WARN)).append(" warnings, ").append(count(Status.FAIL)).append(" failures")
                     .append(!replayed ? ", replay not run" : replayFailures() == 0 ? ", every finished timeline replayed deterministically"
                     : ", " + replayFailures() + " timeline(s) do not replay deterministically").append('\n');

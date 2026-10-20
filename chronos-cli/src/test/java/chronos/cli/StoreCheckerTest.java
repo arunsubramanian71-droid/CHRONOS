@@ -206,6 +206,7 @@ class StoreCheckerTest {
         assertEquals(Status.FAIL, find(r, "T1", "replay").status());
         assertFalse(r.ok());
         assertTrue(r.text().contains("1 timeline(s) do not replay deterministically") && !r.text().contains("every finished timeline replayed"), r.text());
+        assertTrue(r.text().contains("STORE DAMAGED"), "a tampered log is damage, not just a replay failure");
         assertTrue(find(r, "T1", "replay").action().contains("not deterministic"), "the action names the real causes, not 'restore the log'");
     }
 

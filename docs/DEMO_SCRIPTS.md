@@ -98,6 +98,7 @@ $ local-replay T1
 $ check
   expect: FAIL replay
   expect: not deterministic
+  expect: STORE INTACT, REPLAY FAILS
   expect: 1 timeline(s) do not replay deterministically
   exit: 2
 $ check T0 --strict
