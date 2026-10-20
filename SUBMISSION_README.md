@@ -19,10 +19,10 @@ No other software is needed. The simulator itself never uses threads, wall-clock
 
 ```bash
 export JAVA_HOME=$(/usr/libexec/java_home -v 21)      # macOS; on Linux point JAVA_HOME at a JDK 21
-mvn -ntp clean package                                 # compiles 8 modules, runs all 235 tests, builds the jars (about 1-2 minutes)
+mvn -ntp clean package                                 # compiles 8 modules, runs all 238 tests, builds the jars (about 1-2 minutes)
 ```
 
-Expected: `BUILD SUCCESS` and 235 tests, 0 failures (15 model, 21 store, 16 runtime, 18 analysis, 157 cli, 8 bench).
+Expected: `BUILD SUCCESS` and 238 tests, 0 failures (15 model, 21 store, 16 runtime, 18 analysis, 160 cli, 8 bench).
 The result is `chronos-cli/target/chronos.jar` (self-contained command line) and `chronos-bench/target/chronos-bench.jar`.
 The archive also contains a prebuilt `dist/chronos.jar` (built from exactly this source) for running the demo without Maven; it still needs a JDK 21 or newer to run.
 
@@ -67,7 +67,7 @@ CHRONOS_FUZZ_FROM=20001 CHRONOS_FUZZ_SEEDS=26000 mvn -ntp -pl chronos-cli -am te
 
 `README.md` (overview, architecture), `docs/PROFESSOR_DEMO.md` (demonstration guide), `IMPLEMENTATION_STATUS.md` (authoritative status),
 `docs/TRACEABILITY.md` (requirement to code to test), `docs/DEVIATIONS.md` (every interpretation, extension, defect fixed: DEV-01 to DEV-54),
-`docs/COMPLETION_MATRIX.md` (every requirement with a status derived from the tests that ran), `docs/HUMAN_STUDIES.md` (the two studies that need real participants), `docs/USER_GUIDE.md`, `docs/ARCHITECTURE.md`, `docs/EVALUATION.md`, `docs/BENCHMARKS.md`, `docs/VIVA_GUIDE.md`, `docs/PORTABILITY.md`.
+`docs/COMPLETION_MATRIX.md` (every requirement with a status derived from the tests that ran), `docs/HUMAN_STUDIES.md` (the two studies that need real participants: checklist, cards, sheets; `tools/study-kit.sh`, `tools/study_analyse.py`), `docs/USER_GUIDE.md`, `docs/ARCHITECTURE.md`, `docs/EVALUATION.md`, `docs/BENCHMARKS.md`, `docs/VIVA_GUIDE.md`, `docs/PORTABILITY.md`.
 
 ## 8. Known limitations (say these first)
 

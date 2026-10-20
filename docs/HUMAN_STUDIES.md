@@ -1,71 +1,73 @@
-# The two studies that need a real person (materials, procedure, scoring)
+# The two studies that need a real person
 
-**Status (2026-10-20): NOT RUN. BLOCKED BY EXTERNAL INPUT.** Both studies need a participant who is not the author of this system. An
-automated test, a script or an AI agent is not a participant, and nothing in this repository claims otherwise. This file is everything the
-author needs to run them in about 90 minutes in total and to record the result honestly. When a study has been run, fill in section 4 of
-that study, add the raw sheet to `docs/study-results/` and change the status line above and the rows `NFR-15` / "blind" in
-`tools/completion_matrix.py` (they are listed there as BLOCKED BY EXTERNAL INPUT on purpose).
+**Status: NOT RUN. BLOCKED BY EXTERNAL INPUT.** Both studies need a participant who is not the author of this system. An automated test, a script
+or an AI agent is not a participant, and nothing in this repository claims otherwise. Everything that can be prepared without a person is
+prepared and checked (`tools/study-kit.sh self-test`); this file is the checklist for the part that cannot.
 
-## Study A: NFR-15 usability (specification Section 8)
+Source of the requirements (the specification, not invented here):
 
-**Requirement.** "A new team member can run the flagship demo from the README: under 10 minutes, three commands."
+| Study | Specification text | Where |
+|---|---|---|
+| A: usability | NFR-15 "A new team member can run the flagship demo from the README. Under 10 minutes, three commands." | Section 8, page 24 |
+| B: blind debugging | "one of us writes or seeds a bug in a scenario without telling the other, and the other must find the cause using only CHRONOS. We record whether the tool led to the right diagnosis, how long it took, and what was confusing. These sessions become part of the evaluation chapter (Phase 17). We also run campaigns on scenarios to find failures we did not plan, and diagnose them by hand and with the tool to compare answers." | Section 25, page 95 |
 
-**Who.** Someone who has not used CHRONOS, who is comfortable with a terminal, and who has JDK 21 and Maven installed (or the facilitator
-installs them before the clock starts: installing prerequisites is not part of the 10 minutes, and that is written on the sheet).
+Materials (all in this repository, all tested by `tools/study-kit.sh self-test`):
 
-**Procedure.** Hand over only the repository (the GitHub URL or the extracted `CHRONOS-submission.zip`) and the sentence "run the flagship
-demo using the README". The facilitator does not speak except to read this protocol. Start a stopwatch when the participant opens the README.
-
-1. The participant runs the commands they find. The README's three commands are (macOS: set `JAVA_HOME` first, `export JAVA_HOME=$(/usr/libexec/java_home -v 21)`):
-   `mvn -ntp clean package`, then `java -jar chronos-cli/target/chronos.jar --data chronos-data demo`. (Count what the participant actually typed.)
-2. Stop the clock when the participant reads out "demonstration finished: 24 of 24 checks passed".
-3. Record: elapsed time, number of commands typed, every point of hesitation or error, and what the participant says is unclear.
-
-**Pass criteria (as specified).** Elapsed time under 10 minutes AND at most three commands. Record the facts even if it fails.
-
-**Sheet (copy to `docs/study-results/nfr15-<date>.md`):**
-
-| Field | Value |
+| What | File |
 |---|---|
-| Date, facilitator, participant (initials), OS, JDK, Maven | |
-| Commands typed (list) | |
-| Elapsed time (mm:ss) | |
-| Demo output read out? | |
-| Errors, hesitations, unclear README passages | |
-| PASS / FAIL against "< 10 min, 3 commands" | |
+| Participant eligibility, exact words to say, task, success criteria, what to record: Study A | `docs/study-materials/nfr15-participant-card.md` |
+| The same for the blind debugger (five case kinds) | `docs/study-materials/blind-debugger-card.md` |
+| The same for the unplanned-failure comparison (by hand against with the tool) | `docs/study-materials/unplanned-card.md` |
+| Clean pinned checkout, stopwatch, five blind sessions, grading, unplanned cases | `tools/study-kit.sh` |
+| Data sheets (blank): NFR-15, blind, unplanned | `docs/study-results/nfr15-template.csv`, `blind-template.csv`, `unplanned-template.csv` |
+| Analysis: n, pass counts, medians, per-kind results, confusions | `tools/study_analyse.py` |
+| Final report template | `docs/study-materials/report-template.md` |
 
-**What the author has measured meanwhile (not the specified evidence).** The same commands timed by the author on a clean extract of the
-submission archive: see "NFR-15 dry run" in `docs/EVALUATION.md`.
+## Checklist for the facilitator
 
-## Study B: the blind debugging protocol (specification Section 25, risk R15)
+### Before: about 30 minutes, no participant needed
+- [ ] `mvn -ntp clean package` on your own machine (the kit needs the jar for the blind and unplanned parts).
+- [ ] `tools/study-kit.sh self-test` prints `SELF-TEST PASSED`.
+- [ ] Decide the commit under test (default: the head of the published branch); note it on the sheet.
+- [ ] Find the people: Study A needs **one or more people who have never seen CHRONOS**; Study B needs a **debugger** who has not seen the cases (and a preparer: you).
 
-**Requirement.** "One of us writes or seeds a bug in a scenario without telling the other, and the other must find the cause using only
-CHRONOS. We record whether the tool led to the right diagnosis, how long it took, and what was confusing."
+### Study A: NFR-15 (10 minutes per participant plus setup)
+- [ ] On the participant's machine: `tools/study-kit.sh env-check` shows JDK 21 and Maven (install them first; that is not timed).
+- [ ] `tools/study-kit.sh nfr15-prepare ~/study-a1` (clean checkout at the pinned commit, no `.git`, no build output).
+- [ ] Hand over only `~/study-a1/CHRONOS`; read the card's sentence aloud; `tools/study-kit.sh nfr15-clock ~/study-a1 start` when the README is opened.
+- [ ] Count commands, note hesitations, errors, unclear README sentences. Do not coach.
+- [ ] `tools/study-kit.sh nfr15-clock ~/study-a1 stop` when the participant reads out "24 of 24 checks passed".
+- [ ] Fill one row of `~/study-a1/sheet.csv`; copy it to `docs/study-results/nfr15.csv` (header from `nfr15-template.csv`).
+- [ ] `python3 tools/study_analyse.py nfr15 docs/study-results/nfr15.csv`.
 
-**Who.** Two people: a *preparer* (may be the author) and a *debugger* who has not seen the case. The debugger should have done the
-README demo and read `docs/USER_GUIDE.md` first (30 minutes); that preparation time is recorded separately from the diagnosis time.
+### Study B: blind debugging (about 40 minutes per session, five sessions)
+- [ ] The debugger has done the README demo and read `docs/USER_GUIDE.md` (note the preparation time).
+- [ ] `tools/study-kit.sh blind-prepare ~/study-b1` (add a number as a second argument for a second debugger, to get different rule names and times).
+- [ ] Give the debugger **only** `~/study-b1/sessions/s1`, then s2 ... one at a time; keep `~/study-b1/key` private; read the card's briefing aloud.
+- [ ] The debugger runs `chronos --data ... blind begin`, diagnoses, runs `blind answer --root RULE ... --notes "..."`; note commands used, first decisive command, confusions, aloud comments.
+- [ ] `tools/study-kit.sh blind-grade ~/study-b1` after each session or at the end; add debugger initials, prior experience, commands used and confusions to the CSV; save as `docs/study-results/blind.csv`.
+- [ ] `python3 tools/study_analyse.py blind docs/study-results/blind.csv`.
+- [ ] Unplanned failures: `tools/study-kit.sh unplanned-prepare ~/study-b2`; five cases, each diagnosed once by hand (raw log only) and once with the tool; record in `docs/study-results/unplanned.csv`; `python3 tools/study_analyse.py unplanned docs/study-results/unplanned.csv`.
 
-**Procedure.** Exactly as in `docs/BLIND_PROTOCOL.md` (the kit: `chronos blind prepare | begin | answer | grade`). Run at least five sessions, one
-per case kind, with different tokens, and ideally two debuggers. The debugger may use only the `chronos` command line and the HTML report.
+### After
+- [ ] Fill `docs/study-materials/report-template.md` into `docs/EVALUATION.md` (a new section) using only the analysed numbers; say what the sample cannot show.
+- [ ] Change the README or the output wherever a participant was confused, and record the commit.
+- [ ] Only now update the two BLOCKED rows in `tools/completion_matrix.py` (NFR-15, blind) to the real result, run `python3 tools/completion_matrix.py`, and update the status lines in `IMPLEMENTATION_STATUS.md` and `docs/BLIND_PROTOCOL.md`.
 
-**Briefing to read to the debugger.** "Somewhere in this recording a fault caused a failure. You may use any `chronos` command and the
-user guide, but not the source code of the demo applications and not `blind grade`. When you are ready, give the rule id of the fault you
-believe is the root cause with `blind answer`. Say aloud what confuses you. You have 30 minutes."
+## What the participant must do and what evidence comes back
 
-**Data collected per session (CSV template `docs/study-results/blind-template.csv`):**
-`session, token, case kind, debugger (initials), prior CHRONOS experience (none/some), minutes to answer, answer correct (grader exit code 0),
-commands used, first command that gave the decisive clue, what was confusing, would a different output have helped`.
-
-**Scoring.** Correct = `blind grade` exits 0. Time = from `blind begin` to `blind answer` (recorded by the kit). Report: number correct of N,
-median and range of minutes, the three most frequent confusions. Compare, as the specification asks, with the tool-free baseline: give a
-second debugger the same case with only the raw log files and the same time limit, and record the same fields.
-
-**Analysis template (add to `docs/EVALUATION.md` when data exists):** a table of sessions; success rate with the number of sessions stated
-(five sessions can show that the tool *can* lead to the right answer, not a rate); a paragraph on each confusion and the change made to the
-output or the guide because of it; an explicit statement of what the sample cannot show.
+| | Participant does | Evidence collected |
+|---|---|---|
+| Study A | follows the README alone; runs the three README commands; reads out the demo result | elapsed seconds (stopwatch), number of commands, errors and hesitations, README sentences that confused them, pass/fail against "under 10 minutes, three commands" |
+| Study B | uses only `chronos` and the user guide on one case at a time; names the fault rule(s) with `blind answer` | `blind.json` per session (answer, seconds, grade), commands used, first decisive command, confusions |
+| Study B part 2 | diagnoses five unplanned failures, some by hand from the raw log and some with the tool | answers, minutes, agreement with the reference, confusions |
 
 ## What must not be done
 
-* Do not enter invented rows, and do not count a session that the author ran against his or her own case as blind.
-* Do not describe the 800-run chaos evaluation or the 500 planted-cause automated evaluation in `docs/EVALUATION.md` as a blind study:
-  they evaluate the analysers, not a person using the tool.
+* Do not enter invented rows, and do not count a session the author ran on his or her own case as blind. `tools/study_analyse.py` refuses any row marked `SELFTEST`.
+* Do not describe the 800-run chaos evaluation or the 500 planted-cause automated evaluation in `docs/EVALUATION.md` as a blind study: they evaluate the analysers, not a person using the tool.
+* Do not change the pass criterion of Study A (under 10 minutes, three commands) or the grading of Study B (exactly the planted set) after seeing results.
+
+## Limits of the preparation (honest)
+
+The kit plants causes in the *fault plan* (five kinds); the specification's "writes or seeds a bug in a scenario" could also mean a bug in application code, which needs a preparer who writes it (the `mystery` scenario and the Node API make that possible but it is not automated). The by-hand arm of part 2 is a text file and a text editor: how experienced the diagnoser is will dominate the comparison, so report who they were.

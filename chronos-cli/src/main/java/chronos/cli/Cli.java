@@ -36,7 +36,6 @@ final class Cli {
               session <timeline>                          time-travel commands read from stdin (type 'help')
               inject <timeline> --fault SPEC [--fault SPEC]...   record a new run of that timeline's scenario and seed with extra faults added to its plan
               verify|replay <timeline> [--from-checkpoint SEQ]   replay and verify every regenerated event against the log
-              inject <timeline> --fault SPEC [--fault SPEC]...   record a new run of that timeline's scenario and seed with extra faults added to its plan
               determinism <scenario> [--seed N] [--param k=v]... [--jvm N]    run twice (and in N fresh JVMs), compare log hashes
               branch|counterfactual <timeline> [--at SEQ|EVENT|violation] [--horizon MS] [--label TEXT]
                                 [--heal-earlier MS | --heal-later MS [--rule R]] [--remove-fault R] [--drop MSG]

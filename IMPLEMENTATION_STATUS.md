@@ -34,7 +34,7 @@ HTML report, benchmarks and documentation. **Full v0.2 compliance is NOT claimed
 | Benchmarks, soak, slow disk | `chronos-bench.jar all` (JDK 21, re-run on the final code, now including B11), `... jmh` | `docs/BENCHMARKS.md`; **10,000-seed chaos soak: 0 violations**; NFR-05 to NFR-09 all met |
 | Evaluation on unplanned failures | `chronos-bench.jar eval --seeds 400` | 800 chaos runs, 100 failures, root fault named in 97, but-for confirmed by counterfactual in 75 (`docs/EVALUATION.md`) |
 
-### Test inventory (235)
+### Test inventory (238)
 
 | Module | Tests | Classes |
 |---|---|---|
@@ -42,7 +42,7 @@ HTML report, benchmarks and documentation. **Full v0.2 compliance is NOT claimed
 | chronos-store | 21 | `TimelineStoreTest` |
 | chronos-runtime | 16 | `EngineTest` |
 | chronos-analysis | 18 | `CausalGraphTest` 7, `ComparatorTest` 11 |
-| chronos-cli | 157 | `AcceptanceTest` 5, `LawsTest` 20 (M1-M14), `KnownAnswerTest` 9, `PersistenceTest` 4, `CliTest` 20, `PinnedPolicyTest` 3, `AnalyserMutationTest` 3, `M10CatalogueTest` 5, `FailureMinimizerTest` 7, `StoreCheckerTest` 9, `HostileContentTest` 2, `RefusedRunCleanupTest` 4, `VerificationSummaryTest` 2, `BranchAtFinalEventTest` 2, `LawSweepTest` 3, `DemoScriptsTest` 1, `BlindKitTest` 2, `TraceabilityTest` 2, `InterventionFuzzTest` 1, `CorruptionFuzzTest` 3, `OmissionScopeStudyTest` 4, `NodeLocalReplayTest` 5, `ViewerTest` 3, `SystematicExplorerTest` 8, `IncidentBundleTest` 5, `ParserRobustnessTest` 2, `CliRobustnessTest` 1, `SoakTest` 4, `GoldenFileTest` 2, `FaultCatalogueTest` 16 |
+| chronos-cli | 160 | `AcceptanceTest` 5, `LawsTest` 20 (M1-M14), `KnownAnswerTest` 9, `PersistenceTest` 4, `CliTest` 20, `PinnedPolicyTest` 3, `AnalyserMutationTest` 3, `M10CatalogueTest` 5, `FailureMinimizerTest` 7, `StoreCheckerTest` 9, `StudyMaterialsTest` 2, `DocumentedCommandsTest` 1, `HostileContentTest` 2, `RefusedRunCleanupTest` 4, `VerificationSummaryTest` 2, `BranchAtFinalEventTest` 2, `LawSweepTest` 3, `DemoScriptsTest` 1, `BlindKitTest` 2, `TraceabilityTest` 2, `InterventionFuzzTest` 1, `CorruptionFuzzTest` 3, `OmissionScopeStudyTest` 4, `NodeLocalReplayTest` 5, `ViewerTest` 3, `SystematicExplorerTest` 8, `IncidentBundleTest` 5, `ParserRobustnessTest` 2, `CliRobustnessTest` 1, `SoakTest` 4, `GoldenFileTest` 2, `FaultCatalogueTest` 16 |
 | chronos-bench | 8 | `BuildRulesTest` (dependency direction, banned APIs, approved libraries, soak harness) |
 
 ## What is implemented (modules)
@@ -132,7 +132,7 @@ Interpretations, extensions, semantics for the later catalogue items and simplif
 git clone https://github.com/arunsubramanian71-droid/CHRONOS.git && cd CHRONOS && git checkout publish-no-assistant-trailers
 git status && git log --oneline | head
 export JAVA_HOME=$(/usr/libexec/java_home -v 21)
-mvn -ntp clean package                    # must end in BUILD SUCCESS with 235 tests
+mvn -ntp clean package                    # must end in BUILD SUCCESS with 238 tests
 java -jar chronos-cli/target/chronos.jar --data chronos-data demo     # 24 of 24 checks
 ```
 

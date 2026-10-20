@@ -50,7 +50,7 @@ explicit coverage statement), `chronos incident export T0` (a portable, checksum
 
 | Claim | Evidence |
 |---|---|
-| 235 automated tests pass, 0 failures | `mvn -ntp clean package`, run on macOS and in a Linux container (see `IMPLEMENTATION_STATUS.md`); re-run on the extracted submission archive |
+| 238 automated tests pass, 0 failures | `mvn -ntp clean package`, run on macOS and in a Linux container (see `IMPLEMENTATION_STATUS.md`); re-run on the extracted submission archive |
 | 24 of 24 demonstration checks | `chronos demo`, exit code 0 (`docs/demo-output.txt`) |
 | Law M10 (the first causal divergence is the intervention; every root of the branch is in its future) | `M10CatalogueTest`; on the final code a 4,000-seed sweep gave 0 residual of 8,752 comparisons and a 12,000-seed sweep 0 of 26,461 (`IMPLEMENTATION_STATUS.md`) |
 | Branches replay through their lineage | `InterventionFuzzTest`: seeds 1-10,000 and 40,001-50,000 on the final code (and 20,001-40,000 on the code before the OMISSION change), every branch and nested branch replay-verified, `chronos check` over every store written |

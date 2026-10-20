@@ -20,7 +20,7 @@
   works within one volume, which is where a timeline always lives.
 * The program and the tests that start a child JVM (`chronos determinism --jvm`, the kill test) locate it through the `java.home` system property, never a `java` found on the PATH.
 * The build refuses any JDK other than 21 (enforcer rule), on every platform.
-* `.github/workflows/build.yml` runs the build (all 235 tests) and the flagship demonstration on `ubuntu-latest`, `macos-latest` and `windows-latest` with JDK 21 (Temurin).
+* `.github/workflows/build.yml` runs the build (all tests; 235 at the time of the runs listed below) and the flagship demonstration on `ubuntu-latest`, `macos-latest` and `windows-latest` with JDK 21 (Temurin).
   History of its runs on https://github.com/arunsubramanian71-droid/CHRONOS (2026-10-20):
 
   | Run | Commit | Ubuntu | macOS | Windows | Note |
@@ -39,6 +39,6 @@ mvn -ntp package
 java -jar chronos-cli\target\chronos.jar --data chronos-data demo
 ```
 
-Expected: `BUILD SUCCESS`, 235 tests, 0 failures, and `demonstration finished: 24 of 24 checks passed - ALL PASSED`. Please record the result
+Expected: `BUILD SUCCESS`, 238 tests, 0 failures, and `demonstration finished: 24 of 24 checks passed - ALL PASSED`. Please record the result
 (and any failure with its output) in `IMPLEMENTATION_STATUS.md`. The Windows evidence so far is the GitHub-hosted `windows-latest` runner above, not a Windows machine of the author. Likely places for a failure, if any:
 the process-kill test (`PersistenceTest`, uses `Process.destroyForcibly`), and path separators in test expectations.
