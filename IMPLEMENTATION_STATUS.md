@@ -136,6 +136,8 @@ java -jar chronos-cli/target/chronos.jar --data chronos-data demo     # 24 of 24
 
 ## Git state
 
+The commit hashes quoted in this file are those of the local development history. The history published to GitHub contains the same commits, files, authors and dates, with the assistant's "Co-Authored-By" trailer lines removed from the commit messages, so their hashes differ; match them by commit subject.
+
 Local repository only (`main`); no remote was added and nothing was pushed. `chronos-data/` (generated timelines and reports) is git-ignored.
 
 ## Review patch (static review of an uploaded snapshot, 2026-10-20) — now verified
