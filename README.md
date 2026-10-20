@@ -19,6 +19,9 @@ exactly as the specification defines them.
 > [`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md), [`docs/TRACEABILITY.md`](docs/TRACEABILITY.md) and
 > [`docs/DEVIATIONS.md`](docs/DEVIATIONS.md). Full v0.2 compliance is **not** claimed.
 
+**Submission and demonstration:** [`SUBMISSION_README.md`](SUBMISSION_README.md) (prerequisites, build, test, integrity check, limitations) and
+[`docs/PROFESSOR_DEMO.md`](docs/PROFESSOR_DEMO.md) (a guided demonstration; `tools/professor-demo.sh` runs it).
+
 ## The idea in five moves
 
 1. **Record.** Every meaningful happening (message sent or delivered, timer fired, fault injected, state changed) is an immutable
@@ -56,7 +59,7 @@ INTERVENTION_APPLIED on env (D-25), static self-contained HTML report (D-18).
 
 ## Prerequisites
 
-* macOS, Linux or Windows with **JDK 21** (verified on macOS / Apple Silicon only) and **Maven 3.9+** (verified with 3.10.0).
+* macOS, Linux or Windows with **JDK 21** (verified on macOS / Apple Silicon and in a Linux container; Windows not verified) and **Maven 3.9+** (verified with 3.10.0).
 * The build refuses to run on any other JDK (a Maven enforcer rule), because newer JDKs may also be installed.
 
 ```bash
