@@ -111,7 +111,7 @@ class BuildRulesTest {
         try (Stream<Path> s = Files.walk(dir)) {
             for (Path p : (Iterable<Path>) s.filter(f -> f.toString().endsWith(".java"))::iterator) {
                 String c = code(Files.readString(p));
-                for (String b : BANNED) if (c.contains(b)) hits.add(ROOT.relativize(p) + " uses " + b);
+                for (String b : BANNED) if (c.contains(b)) hits.add(ROOT.relativize(p).toString().replace('\\', '/') + " uses " + b);
             }
         }
         return hits;
@@ -139,10 +139,10 @@ class BuildRulesTest {
     void theApplicationNodesOnlyUseTheContextForTimeRandomnessAndTheNetwork() throws IOException {
         // demo nodes must not touch java.io/nio files or static mutable state either
         try (Stream<Path> s = Files.walk(ROOT.resolve("chronos-demo/src/main/java"))) {
-            for (Path p : (Iterable<Path>) s.filter(f -> f.toString().endsWith(".java") && !f.toString().contains("/bad/"))::iterator) {
+            for (Path p : (Iterable<Path>) s.filter(f -> f.toString().endsWith(".java") && !f.toString().replace('\\', '/').contains("/bad/"))::iterator) {
                 String c = code(Files.readString(p));
                 assertFalse(c.contains("java.io.") || c.contains("java.nio."), p + " touches files");
-                for (String line : c.split("\n")) {
+                for (String line : c.split("\\R")) {
                     String t = line.trim();
                     boolean field = t.contains(" static ") || t.startsWith("static ");
                     if (field && !t.contains("final") && !t.contains("(") && (t.endsWith(";") || t.contains("=")))

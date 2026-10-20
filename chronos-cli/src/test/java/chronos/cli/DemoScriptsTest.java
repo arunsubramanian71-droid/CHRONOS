@@ -22,7 +22,7 @@ class DemoScriptsTest {
         List<Step> cur = null;
         List<String> args = null, expects = null;
         int exit = 0;
-        for (String line : md.split("\n")) {
+        for (String line : md.split("\\R")) { // any line ending: a Windows checkout may turn the document into CRLF, and a stray \r would become part of an expected text
             if (line.startsWith("```chronos-script")) {
                 cur = new ArrayList<>();
                 continue;

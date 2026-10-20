@@ -443,7 +443,7 @@ class LawsTest {
     private Map<String, String> hashes(Path dir) throws Exception {
         Map<String, String> m = new TreeMap<>();
         try (Stream<Path> s = Files.walk(dir)) {
-            for (Path p : (Iterable<Path>) s.filter(Files::isRegularFile)::iterator) m.put(dir.relativize(p).toString(), HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(p))));
+            for (Path p : (Iterable<Path>) s.filter(Files::isRegularFile)::iterator) m.put(dir.relativize(p).toString().replace('\\', '/'), HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(p))));
         }
         return m;
     }

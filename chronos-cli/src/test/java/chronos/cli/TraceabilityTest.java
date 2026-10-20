@@ -21,7 +21,7 @@ class TraceabilityTest {
     private static Map<String, String> sources(String dirName) throws IOException {
         Map<String, String> byClass = new HashMap<>();
         try (Stream<Path> s = Files.walk(ROOT)) {
-            for (Path p : (Iterable<Path>) s.filter(f -> f.toString().endsWith(".java") && f.toString().contains(dirName) && !f.toString().contains("/target/"))::iterator)
+            for (Path p : (Iterable<Path>) s.filter(f -> f.toString().endsWith(".java") && f.toString().replace('\\', '/').contains(dirName) && !f.toString().replace('\\', '/').contains("/target/"))::iterator)
                 byClass.put(p.getFileName().toString().replace(".java", ""), Files.readString(p));
         }
         return byClass;
@@ -79,7 +79,7 @@ class TraceabilityTest {
         for (int k = 0; k <= 4; k++) if (!t.contains("| KA-" + k + " ")) missing.add("KA-" + k);
         String frSection = t.substring(t.indexOf("## Functional requirements"), t.indexOf("## Non-functional"));
         Set<Integer> covered = new TreeSet<>();
-        for (String line : frSection.split("\n")) {
+        for (String line : frSection.split("\\R")) {
             Matcher row = Pattern.compile("^\\| ([0-9a-z,\\- ]+?) \\|").matcher(line);
             if (!row.find()) continue;
             String cell = row.group(1);
@@ -91,7 +91,7 @@ class TraceabilityTest {
         for (int f = 1; f <= 52; f++) if (!covered.contains(f)) missing.add("FR-" + f);
         assertEquals(List.of(), missing);
         // every status in the matrix is one of the four defined labels or a documented qualifier
-        for (String line : t.split("\n"))
+        for (String line : t.split("\\R"))
             if (line.startsWith("| ") && (line.contains("NOT IMPLEMENTED") || line.contains("NOT VERIFIED"))) assertFalse(line.contains("COMPLETE (all"), line);
     }
 }

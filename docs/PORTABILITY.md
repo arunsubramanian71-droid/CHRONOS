@@ -19,7 +19,7 @@
 * The program and the tests that start a child JVM (`chronos determinism --jvm`, the kill test) locate it through the `java.home` system property, never a `java` found on the PATH.
 * The build refuses any JDK other than 21 (enforcer rule), on every platform.
 * `.github/workflows/build.yml` runs the same two commands on `ubuntu-latest`, `macos-latest` and `windows-latest` if the repository is ever
-  published. **It has never been run.**
+  published. **First run (2026-10-20, commit of the published branch): macOS passed; Ubuntu failed before any project code ran (Maven could not download `org.junit:junit-bom:5.11.4` from Central, a version that exists: an external download failure, not a project defect; the workflow now retries that resolution step); Windows failed three tests that assumed `/` in paths and LF line endings (DEV-53, fixed in the tests and `.gitattributes`). Windows stays NOT VERIFIED until a Windows job of the workflow passes.**
 
 ## How to verify on Windows (about 5 minutes with JDK 21 and Maven installed)
 

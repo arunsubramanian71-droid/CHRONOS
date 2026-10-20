@@ -66,12 +66,12 @@ CHRONOS_FUZZ_FROM=20001 CHRONOS_FUZZ_SEEDS=26000 mvn -ntp -pl chronos-cli -am te
 ## 7. Documents
 
 `README.md` (overview, architecture), `docs/PROFESSOR_DEMO.md` (demonstration guide), `IMPLEMENTATION_STATUS.md` (authoritative status),
-`docs/TRACEABILITY.md` (requirement to code to test), `docs/DEVIATIONS.md` (every interpretation, extension, defect fixed: DEV-01 to DEV-52),
+`docs/TRACEABILITY.md` (requirement to code to test), `docs/DEVIATIONS.md` (every interpretation, extension, defect fixed: DEV-01 to DEV-53),
 `docs/USER_GUIDE.md`, `docs/ARCHITECTURE.md`, `docs/EVALUATION.md`, `docs/BENCHMARKS.md`, `docs/VIVA_GUIDE.md`, `docs/PORTABILITY.md`.
 
 ## 8. Known limitations (say these first)
 
-* Verified on macOS (Apple Silicon) and Linux (Ubuntu aarch64 container). **Windows is not verified.** The CI workflow in `.github/workflows/build.yml` has never run.
+* Verified on macOS (Apple Silicon) and Linux (Ubuntu aarch64 container). **Windows is not verified** (its first CI run failed on three test-portability defects, DEV-53; see `docs/PORTABILITY.md` for the current CI status). The CI workflow is `.github/workflows/build.yml`.
 * **Not implemented:** per-vector delta compression (the specification's trigger condition did not occur). The **blind-debugging evaluation** needs a second person; the kit is built (`chronos blind`) but no session has been run, so no blind result is claimed.
 * **Open decisions:** DEV-03 (scope of OMISSION edges for partitions, left to the other author), Q1 (deadline and weekly hours), Q6 (the institution's evaluation form).
 * Explanations marked "potential" (OMISSION edges, displaced events, the possible-silence section) are hypotheses, not proved causes.

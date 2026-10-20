@@ -171,4 +171,4 @@ Measured results (and which targets of Section 8 were met or missed) are in [`do
   (`docs/EVALUATION.md` evaluates the analysers on 800 unplanned chaos runs instead, and says what that does not show).
 * Verified on macOS (Apple Silicon, JDK 21) and on Linux (Ubuntu 24.04 in a container); **Windows is not verified**.
 * A counterfactual is evidence about the simulated world under CHRONOS's rules, not proof about reality (Section 19).
-* Interpretations and extensions of the specification are recorded as DEV-01 to DEV-52 in `docs/DEVIATIONS.md`.
+* Interpretations and extensions of the specification are recorded as DEV-01 to DEV-53 in `docs/DEVIATIONS.md`.

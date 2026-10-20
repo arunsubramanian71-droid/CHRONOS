@@ -3,3 +3,12 @@
 *.java text eol=lf
 *.html text eol=lf
 *.pdf binary
+# Documents are read by tests (the executable demo scripts, the traceability matrix) and shell scripts must stay runnable under Git Bash: LF everywhere.
+*.md text eol=lf
+*.sh text eol=lf
+*.json text eol=lf
+*.txt text eol=lf
+*.csv text eol=lf
+*.py text eol=lf
+*.xml text eol=lf
+*.yml text eol=lf

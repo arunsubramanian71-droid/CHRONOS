@@ -1,5 +1,6 @@
-# Automatic build on the three operating systems the specification names (NFR-14). It has NEVER been run: this repository has no
-# remote (a deliberate decision, see IMPLEMENTATION_STATUS.md), so this file only becomes active if the repository is ever published.
+# Automatic build on the three operating systems the specification names (NFR-14): Linux, macOS and Windows, JDK 21.
+# First run of this workflow: 2026-10-20 (macOS passed; Ubuntu failed to download the JUnit BOM from Maven Central; Windows failed three
+# tests that assumed "/" path separators and LF line endings, see docs/DEVIATIONS.md DEV-53).
 name: build
 on: [push, pull_request]
 jobs:
@@ -16,7 +17,18 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: maven
+      # Reading the root POM downloads the JUnit BOM import (org.junit:junit-bom:5.11.4, which exists on Maven Central). A one-off download
+      # failure there aborts the build before any project code runs, so this step only resolves the project model and the build plugins,
+      # with retries. It runs no tests and cannot hide a test failure: the real build below has no retry.
+      - name: Resolve the project model from Maven Central (retried, no tests)
+        shell: bash
+        run: |
+          for attempt in 1 2 3 4; do
+            if mvn -B -ntp validate; then exit 0; fi
+            echo "attempt $attempt failed; waiting before retrying"; sleep $((attempt * 15))
+          done
+          exit 1
       - name: Build and test (all eight modules)
-        run: mvn -ntp package
+        run: mvn -B -ntp package
       - name: Flagship demonstration (AD-1 to AD-6, KA scenarios; exit code 0 means every check passed)
         run: java -jar chronos-cli/target/chronos.jar --data chronos-data demo

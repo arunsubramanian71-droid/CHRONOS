@@ -58,7 +58,7 @@ explicit coverage statement), `chronos incident export T0` (a portable, checksum
 
 ## Honest answers to likely questions
 
-* *Is it fully compliant with the specification?* No. `docs/TRACEABILITY.md` lists every requirement with its status; `docs/DEVIATIONS.md` lists every interpretation, extension and defect (DEV-01 to DEV-52). Not done: per-vector delta compression (its trigger never occurred), the blind evaluation with a second person, Windows verification.
+* *Is it fully compliant with the specification?* No. `docs/TRACEABILITY.md` lists every requirement with its status; `docs/DEVIATIONS.md` lists every interpretation, extension and defect (DEV-01 to DEV-53). Not done: per-vector delta compression (its trigger never occurred), the blind evaluation with a second person, Windows verification.
 * *Is the causal analysis a proof of cause?* Certain edges (message, timer, step effect, fault) are real causes in the run. OMISSION edges, "displaced" events and the possible-silence section are labelled **potential**: they are hypotheses a reader can check. A counterfactual verdict is true for that simulated world, not for production.
 * *How do you know replay is really deterministic?* One decision source for all nondeterminism, identity-keyed randomness, a single thread, and a build rule that bans wall-clock and unseeded randomness in the core modules. Evidence: replay of every demo and 16,000 seeded run pairs identical, cross-JVM hash equality, and a deliberately bad node that replay catches.
 * *Is the explorer a model checker?* No. It runs every subset of at most K declared faults for one seed; "no violation" means none inside that bound. `minimize` returns a 1-minimal plan (no single rule can be removed), not necessarily the smallest.

@@ -76,7 +76,7 @@ Full matrix: `docs/TRACEABILITY.md`. The important ones:
 ## Deviations from the specification
 
 Interpretations, extensions, semantics for the later catalogue items and simplifications are recorded in `docs/DEVIATIONS.md`
-(DEV-01 to DEV-52). The ones a reviewer should look at first: **DEV-03** (OMISSION scope for partitions also requires the node to have
+(DEV-01 to DEV-53). The ones a reviewer should look at first: **DEV-03** (OMISSION scope for partitions also requires the node to have
 heard from the other side), **DEV-02** (digest parent ids exclude PROGRAM_ORDER), **DEV-11** (heal-enabled FAULT edge), **DEV-10**
 (AD-4/AD-5 branch point).
 
@@ -98,6 +98,7 @@ heard from the other side), **DEV-02** (digest parent ids exclude PROGRAM_ORDER)
 11c. **`NullPointerException` on an unlisted file in an incident bundle** (bundle forgery test): fixed.
 11b. **Branch summaries carried the hash of empty input**, **refused runs and branches left unfinished timelines behind**, **negative horizons were accepted** (found by `chronos check` and the tests written for it): DEV-49.
 11c. **A branch at the last event of a finished timeline lost the run's silent tail** (fuzzer, fresh range, seed 20726): DEV-52.
+11d. **First CI run on GitHub (macOS passed, Ubuntu and Windows failed)**: Ubuntu could not download the JUnit BOM from Maven Central (external; the workflow now retries model resolution), and three Windows tests assumed `/` path separators and LF line endings (`DemoScriptsTest`, `TraceabilityTest`, `LawsTest`; a fourth latent one in `BuildRulesTest`): DEV-53. The product code was not at fault.
 12. Wrong test assumptions were corrected after checking the actual semantics, not by loosening assertions.
 
 ## Known limitations and risks
