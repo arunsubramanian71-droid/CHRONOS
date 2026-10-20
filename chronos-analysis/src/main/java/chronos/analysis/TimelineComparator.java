@@ -101,6 +101,7 @@ public final class TimelineComparator {
         List<DivergenceReport.Displaced> displaced = new ArrayList<>();
         List<Root> demoted = new ArrayList<>();
         roots = demoteExplained(roots, ea, eb, ca, cb, prefix, displaced, demoted);
+        roots = demoteShiftedCauses(roots, ea, eb, ga, gb, prefix, displaced, demoted);
 
         // 6. order the roots
         List<Root> ordered = orderRoots(roots, order, ga, gb);
@@ -300,7 +301,7 @@ public final class TimelineComparator {
             if (counterpart != null) {
                 String missingCause = null;
                 for (Parent par : counterpart.parents()) {
-                    if (par.kind() != EdgeKind.MESSAGE && par.kind() != EdgeKind.FAULT) continue;
+                    if (par.kind() != EdgeKind.MESSAGE && par.kind() != EdgeKind.FAULT && par.kind() != EdgeKind.OMISSION) continue;
                     int at = -1;
                     for (int i = prefix; i < mine.size(); i++) if (mine.get(i).eventId().equals(par.id())) { at = i; break; }
                     boolean inPrefix = at < 0 && mineIdsInPrefix.contains(par.id());
@@ -325,6 +326,61 @@ public final class TimelineComparator {
                 demoted.add(r);
             } else {
                 keep.add(r);
+            }
+        }
+        return keep;
+    }
+
+    /**
+     * A root whose counterpart in the other timeline (same id) depended on a message or fault that exists here too, structurally the same, but at a
+     * different time (the digest ignores timing in structural mode): the race between that event and this one was decided the other way. It is
+     * explained, as a potential link, when the shifted event is itself downstream of another root or of a displaced event of this timeline (DEV-47).
+     * The same holds when the event it replaces happened here later, under another id, or when what became of the message it handled (delayed, dropped)
+     * is recorded here downstream of another root.
+     */
+    private static List<Root> demoteShiftedCauses(List<Root> roots, List<Event> ea, List<Event> eb, CausalGraph ga, CausalGraph gb,
+                                                  int prefix, List<DivergenceReport.Displaced> displaced, List<Root> demoted) {
+        List<Root> keep = new ArrayList<>(roots);
+        for (Root r : roots) {
+            if (r.nodeId().equals(Event.ENV)) continue;
+            List<Event> mine = r.side() == 'A' ? ea : eb, theirs = r.side() == 'A' ? eb : ea;
+            CausalGraph g = r.side() == 'A' ? ga : gb;
+            Event counterpart = null;
+            for (int i = prefix; i < theirs.size(); i++) if (theirs.get(i).eventId().equals(r.eventId())) { counterpart = theirs.get(i); break; }
+            if (counterpart == null) continue;
+            List<Integer> explainers = new ArrayList<>();
+            for (Root k : keep) if (k != r && k.side() == r.side()) explainers.add(k.pos());
+            for (Root d : demoted) if (d.side() == r.side()) explainers.add(d.pos());
+            BitSet future = null;
+            String shifted = null;
+            // the event it replaces happened here too, later (a delayed delivery, a trigger that fired after the race): as an event of the same
+            // content on this node's lane that is downstream of another root
+            String key = contentKey(counterpart);
+            Object handled = counterpart.payload().get("messageId"); // the message the replaced event handled, if any
+            for (int i = prefix; i < mine.size() && shifted == null; i++) {
+                Event m = mine.get(i);
+                if (m.eventId().equals(r.eventId())) continue;
+                boolean sameContent = m.nodeId().equals(r.nodeId()) && contentKey(m).equals(key);
+                boolean sameMessage = handled != null && handled.equals(m.payload().get("messageId")); // what became of that message here: delayed, dropped, duplicated
+                if (!sameContent && !sameMessage) continue;
+                if (future == null) future = g.causalFutureOf(explainers);
+                if (future.get(i)) shifted = m.eventId();
+            }
+            for (Parent par : counterpart.parents()) {
+                if (shifted != null) break;
+                if (par.kind() != EdgeKind.MESSAGE && par.kind() != EdgeKind.FAULT && par.kind() != EdgeKind.OMISSION) continue;
+                Event here = null, there = null;
+                int at = -1;
+                for (int i = prefix; i < mine.size(); i++) if (mine.get(i).eventId().equals(par.id())) { here = mine.get(i); at = i; break; }
+                for (int i = prefix; i < theirs.size(); i++) if (theirs.get(i).eventId().equals(par.id())) { there = theirs.get(i); break; }
+                if (here == null || there == null || here.contentDigest(true).equals(there.contentDigest(true))) continue;
+                if (future == null) future = g.causalFutureOf(explainers);
+                if (future.get(at)) { shifted = par.id(); break; }
+            }
+            if (shifted != null) {
+                displaced.add(new DivergenceReport.Displaced(r.side(), r.eventId(), r.nodeId(), shifted, DivergenceReport.Displaced.TIMING));
+                demoted.add(r);
+                keep.remove(r);
             }
         }
         return keep;

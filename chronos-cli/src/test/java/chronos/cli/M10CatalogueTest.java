@@ -29,6 +29,20 @@ class M10CatalogueTest {
         return false;
     }
 
+    /** Diagnostics: the events of one node's lane around the given event, with kind, time, payload and parent edges. */
+    private static String lane(List<Event> events, String node, String around) {
+        List<Event> l = events.stream().filter(e -> e.nodeId().equals(node)).toList();
+        int at = 0;
+        for (int i = 0; i < l.size(); i++) if (l.get(i).eventId().equals(around)) at = i;
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = Math.max(0, at - 3); i < Math.min(l.size(), at + 3); i++) {
+            Event e = l.get(i);
+            sb.append("\n      ").append(e.eventId()).append(' ').append(e.kind()).append(" t=").append(e.virtualTime()).append(' ').append(Canon.json(e.payload()))
+                    .append(" parents=").append(e.parents().stream().map(x -> x.id() + ":" + x.kind()).toList());
+        }
+        return sb.append("]").toString();
+    }
+
     private final List<String> violations = new ArrayList<>();
     private int compared, renumberedRoots, strictChecked;
 
@@ -45,7 +59,16 @@ class M10CatalogueTest {
         BitSet future = g.causalFutureOf(List.of(g.pos(iv.eventId())));
         for (var root : d.roots()) {
             if (root.side() != 'B' || future.get(root.pos())) continue;
-            violations.add(label + ": root " + root.eventId() + " of the branch is outside the intervention's causal future");
+            Event re = b.get(root.pos());
+            String parentDetails = re.parents().stream().map(p -> p.id() + ":" + p.kind()).toList().toString();
+            Event ivEvent = b.stream().filter(e -> e.eventId().equals(iv.eventId())).findFirst().orElse(null);
+            violations.add(label + ": root " + root.eventId() + " of the branch is outside the intervention's causal future"
+                    + " | rootKind=" + re.kind() + " payload=" + Canon.json(re.payload()) + " parents=" + parentDetails
+                    + " | intervention=" + (ivEvent == null ? "<missing>" : ivEvent.eventId() + " parents=" + ivEvent.parents())
+                    + " | laneA=" + lane(a, re.nodeId(), re.eventId()) + " | laneB=" + lane(b, re.nodeId(), re.eventId())
+                    + " | envA=" + a.stream().filter(e -> e.nodeId().equals(Event.ENV)).map(e -> e.eventId() + "@" + e.virtualTime() + " " + e.kind() + " " + Canon.json(e.payload()) + " " + e.parents().stream().map(x -> x.id() + ":" + x.kind()).toList()).toList()
+                    + " | envB=" + b.stream().filter(e -> e.nodeId().equals(Event.ENV)).map(e -> e.eventId() + "@" + e.virtualTime() + " " + e.kind() + " " + Canon.json(e.payload()) + " " + e.parents().stream().map(x -> x.id() + ":" + x.kind()).toList()).toList()
+                    + " | comparison=" + d.text().replace("\n", " / "));
         }
         if (!d.unexplained().isEmpty()) violations.add(label + ": unexplained " + d.unexplained());
         for (DivergenceReport.Displaced x : d.displaced()) {
@@ -111,13 +134,42 @@ class M10CatalogueTest {
         org.junit.jupiter.api.Assertions.assertTrue(renumberedRoots > 0, "the scenario set does exercise lane renumbering");
     }
 
+    /** Seeds of the 4,000-seed sweep that left a root outside the intervention's causal future before DEV-47 (a race decided the other way). */
+    private static final Set<Long> TIMING_RESIDUALS = new TreeSet<>(List.of(281L, 552L, 1945L, 2696L, 2715L, 3079L, 4085L, 8184L, 9356L, 10130L, 22656L, 23754L));
+
+    @Test
+    void m10HoldsForTheSeedsWhoseRaceWasDecidedTheOtherWayByTheIntervention() {
+        // DROP_MESSAGE shifts a receiver's lane so a crash-after trigger fires later; CONFIG_PATCH shifts a heartbeat so a watchdog wins the race;
+        // DELAY_MESSAGE moves a delivery past a timer; REMOVE_INPUT moves a pause-after trigger
+        sweep(23754, TIMING_RESIDUALS);
+        org.junit.jupiter.api.Assertions.assertEquals(List.of(), violations);
+        org.junit.jupiter.api.Assertions.assertTrue(compared >= TIMING_RESIDUALS.size(), "compared " + compared);
+    }
+
     @Test
     void m10HoldsForRandomInterventionsOfEveryTypeAtRandomBoundariesOfChaosRuns() {
+        long seeds = Long.parseLong(System.getenv().getOrDefault("CHRONOS_M10_SEEDS", "120"));
+        Set<Long> onlySeeds = new TreeSet<>();
+        String only = System.getenv().getOrDefault("CHRONOS_M10_ONLY_SEEDS", "").trim();
+        if (!only.isEmpty()) for (String token : only.split(",")) onlySeeds.add(Long.parseLong(token.trim()));
+        Map<String, int[]> byType = sweep(seeds, onlySeeds);
+        System.out.println("M10 by type (compared, violating): " + byType.entrySet().stream().map(e -> e.getKey() + "=" + e.getValue()[0] + "/" + e.getValue()[1]).toList());
+        if (!onlySeeds.isEmpty()) {
+            System.out.println("M10 focused diagnostics: " + violations.size() + " residuals " + violations);
+        } else if (seeds <= 500) org.junit.jupiter.api.Assertions.assertEquals(List.of(), violations.stream().limit(10).toList(), "no exception in the default sweep");
+        else { // a long measurement run (CHRONOS_M10_SEEDS=4000): the residual rate is documented, so bound it instead of requiring zero
+            System.out.println("M10 residual in long run: " + violations.size() + " of " + compared + " " + violations);
+            org.junit.jupiter.api.Assertions.assertTrue(violations.size() * 1000L <= compared, violations.size() + " violations in " + compared + " comparisons: " + violations);
+        }
+        if (onlySeeds.isEmpty()) org.junit.jupiter.api.Assertions.assertTrue(compared >= seeds, "compared " + compared);
+    }
+
+    private Map<String, int[]> sweep(long seeds, Set<Long> onlySeeds) {
         TestRegistry reg = new TestRegistry();
         List<String> scenarios = List.of("gossip", "re", "re2", "ka2", "ka3", "twopairs", "tutorial");
-        long seeds = Long.parseLong(System.getenv().getOrDefault("CHRONOS_M10_SEEDS", "120"));
         Map<String, int[]> byType = new TreeMap<>();
         for (long seed = 1; seed <= seeds; seed++) {
+            if (!onlySeeds.isEmpty() && !onlySeeds.contains(seed)) continue;
             String sc = scenarios.get((int) (seed % scenarios.size()));
             Map<String, String> params = sc.equals("gossip") ? Map.of("nodes", "4", "horizon", "400") : Map.of();
             var scenario = reg.create(sc, params);
@@ -143,13 +195,7 @@ class M10CatalogueTest {
                 }
             }
         }
-        System.out.println("M10 by type (compared, violating): " + byType.entrySet().stream().map(e -> e.getKey() + "=" + e.getValue()[0] + "/" + e.getValue()[1]).toList());
-        if (seeds <= 500) org.junit.jupiter.api.Assertions.assertEquals(List.of(), violations.stream().limit(10).toList(), "no exception in the default sweep");
-        else { // a long measurement run (CHRONOS_M10_SEEDS=4000): the residual rate is documented, so bound it instead of requiring zero
-            System.out.println("M10 residual in long run: " + violations.size() + " of " + compared + " " + violations);
-            org.junit.jupiter.api.Assertions.assertTrue(violations.size() * 1000L <= compared, violations.size() + " violations in " + compared + " comparisons: " + violations);
-        }
-        org.junit.jupiter.api.Assertions.assertTrue(compared >= seeds, "compared " + compared);
+        return byType;
     }
 
     @Test

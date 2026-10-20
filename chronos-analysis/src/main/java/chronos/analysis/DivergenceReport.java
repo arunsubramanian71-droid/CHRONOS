@@ -21,10 +21,11 @@ public record DivergenceReport(String timelineA, String timelineB, boolean stric
      * timeline's lane with the same kind and payload, which shows that this one only moved (reason "renumbered", DEV-36). The other
      * reasons are "absence" (the event it replaces in the other timeline is a delivery whose send does not exist here) and "silence": the node's first different event is an input that did not arrive because an event that is itself in this
      * divergence dropped the message ({@code relatedEvent}); this one is a potential link, in the spirit of an OMISSION edge, not a certain one.
+     * "timing" is an event that replaces one which depended on, or handled, something that happened here later or differently, downstream of another root (DEV-47).
      * Either way its consequences stay in the cone.
      */
     public record Displaced(char side, String eventId, String nodeId, String relatedEvent, String reason) {
-        public static final String RENUMBERED = "renumbered", SILENCE = "silence", ABSENCE = "absence";
+        public static final String RENUMBERED = "renumbered", SILENCE = "silence", ABSENCE = "absence", TIMING = "timing";
     }
 
     /** One hop of the explanation path: from-event, to-event, the kind of link and a plain-language line. */
@@ -60,6 +61,8 @@ public record DivergenceReport(String timelineA, String timelineB, boolean stric
             sb.append("    (displaced, not a root: ").append(d.eventId()).append(" [").append(d.side() == 'A' ? timelineA : timelineB).append("] ")
                     .append(d.reason().equals(Displaced.SILENCE)
                             ? "follows the dropped message " + d.relatedEvent() + " to " + d.nodeId() + " (potential link: what the node was waiting for never came)"
+                            : d.reason().equals(Displaced.TIMING)
+                            ? "replaces an event of the other timeline that depended on or handled " + d.relatedEvent() + ", which happened later or differently here (potential link: the race was decided the other way)"
                             : d.reason().equals(Displaced.ABSENCE)
                             ? "replaces an event of the other timeline that depended on " + d.relatedEvent() + ", which this timeline does not reproduce (potential link: the absence propagated)"
                             : "has the content of " + d.relatedEvent() + " in the other timeline: an event before it on " + d.nodeId() + " shifted the node's numbering")

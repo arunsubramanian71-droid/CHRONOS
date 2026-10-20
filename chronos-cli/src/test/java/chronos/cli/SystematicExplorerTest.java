@@ -122,6 +122,25 @@ class SystematicExplorerTest {
     }
 
     @Test
+    void caseLimitAlsoBoundsEnumerationWhenSupersetPruningWouldSkipTheWholeSpace() {
+        // The base partition already violates the invariant, so the empty candidate set is a violating subset
+        // of every schedule. Without an enumeration limit, pruning still walks all 2^18 combinations.
+        List<Candidate> candidates = new ArrayList<>();
+        for (int i = 0; i < 18; i++)
+            candidates.add(cand(FaultRule.pause("candidate-" + i, "client", 900L + i, 10)));
+        FaultPlan base = FaultPlan.of(FaultRule.partition("base-partition", 300, 400L, List.of(List.of("p"), List.of("b"))));
+        Config cfg = new Config("re", Map.of("partition", "off"), 42, null, base, candidates, 18, 2, false, true);
+
+        Report r = new SystematicExplorer(reg).explore(cfg);
+        assertEquals(Termination.CASE_LIMIT, r.termination());
+        assertEquals(1, r.executed(), "only the empty candidate set should execute");
+        assertEquals(1, r.skippedAsSuperset(), "the second schedule is pruned");
+        assertEquals(2, r.executed() + r.skippedAsSuperset(), "the limit bounds all processed subsets");
+        assertEquals(r.totalSubsets() - 2, r.notEnumerated());
+        assertFalse(r.complete());
+    }
+
+    @Test
     void aFixedConfigurationGivesAByteIdenticalReportAndGeneratedSpaceInAnyOrderOfCalls() {
         String a = new SystematicExplorer(reg).explore(reConfig(3, 1000, false, true)).text();
         new SystematicExplorer(reg).explore(reConfig(1, 1000, false, true)); // an unrelated run in between

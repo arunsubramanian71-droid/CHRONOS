@@ -20,8 +20,8 @@ import java.util.*;
  * <li><b>Superset pruning</b> (optional, on by default): once a subset violates, every superset is skipped as "contains a known
  *   violating schedule". This is sound for finding <i>minimal</i> violating schedules and is not sound for "does every schedule
  *   violate"; it is reported separately from exploration.</li>
- * <li><b>Limits.</b> {@code maxCases} bounds executions; reaching it stops the run with the termination reason CASE_LIMIT and an
- *   explicit statement of how much of the bound was not explored.</li>
+ * <li><b>Limits.</b> {@code maxCases} bounds subsets processed, including duplicate traces and supersets pruned without execution;
+ *   reaching it stops the run with termination reason CASE_LIMIT and an explicit statement of how much of the bound was not explored.</li>
  * </ul>
  * Every execution is in memory and deterministic, so a fixed configuration gives a byte-identical report.
  */
@@ -130,12 +130,15 @@ public final class SystematicExplorer {
                 Set<Integer> chosen = new TreeSet<>();
                 for (int c : comb) chosen.add(c);
                 long thisCase = index++;
-                if (cfg.pruneSupersets() && violating.stream().anyMatch(chosen::containsAll)) {
-                    skipped++;
-                } else if (executed >= cfg.maxCases()) {
+                // Bound enumeration work, not just executions. Otherwise a violating empty schedule can cause every
+                // non-empty subset to be pruned while the explorer still walks an exponentially large search space.
+                if (thisCase >= cfg.maxCases()) {
                     termination = Termination.CASE_LIMIT;
                     index--;
                     break outer;
+                }
+                if (cfg.pruneSupersets() && violating.stream().anyMatch(chosen::containsAll)) {
+                    skipped++;
                 } else {
                     FaultPlan plan = base;
                     List<String> names = new ArrayList<>();

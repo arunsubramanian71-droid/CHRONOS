@@ -139,7 +139,7 @@ Paths are relative to the module's `src/main/java/chronos/<package>/`.
 | M7 No-op | `LawsTest.m7_aBranchWithNoInterventions...`; `LawSweepTest.m6AndM7...` (288 no-op branches at random boundaries of 48 chaos runs, faults in force, Continue and Pinned, every branch replays) |
 | M8 Locality | `LawsTest.m8_nodesWithNoCausalConnection...` (drop, delay, duplicate, crash interventions); `LawSweepTest.m8...` (random local fault plans, drop, delay, duplicate, pause and skew interventions); `PinnedPolicyTest` (under Pinned) |
 | M9 Identity | `LawsTest.m9...` |
-| M10 Root | `LawsTest.m10...`, `M10CatalogueTest` (every intervention type; removal of every rule of 60 random plans; 120 random interventions of every type at random boundaries of chaos runs; regressions; all branches replay), `AcceptanceTest.ad5`. Both clauses hold in all of them; a 4,000-seed measurement run leaves 6 of 8,752 (0.07%) with a root outside the intervention's future (DEV-36, DEV-43) |
+| M10 Root | `LawsTest.m10...`, `M10CatalogueTest` (every intervention type; removal of every rule of 60 random plans; 120 random interventions of every type at random boundaries of chaos runs; regressions; all branches replay), `AcceptanceTest.ad5`. Both clauses hold in all of them; a 30,000-seed measurement run (66,427 comparisons) leaves none (DEV-36, DEV-43, DEV-47); `m10HoldsForTheSeedsWhoseRaceWasDecidedTheOtherWay...` pins the twelve seeds that did |
 | M11 Immutability | `LawsTest.m11...` |
 | M12 Thread independence | `LawsTest.m12...` |
 | M13 Environment identity | `LawsTest.m13...`, `EngineTest.everyCopy...` |
