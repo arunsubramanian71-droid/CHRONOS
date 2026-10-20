@@ -29,18 +29,6 @@ public final class Counterexample {
 
     /** Records the finding as a timeline and writes its document; returns the document's path. */
     public static Path save(TimelineStore store, chronos.sdk.ScenarioRegistry registry, String timelineId, SystematicExplorer.Config cfg, SystematicExplorer.Finding f) {
-        long horizon = f.run().header().horizon();
-        Recording.record(store, registry, timelineId, Recording.Spec.of(cfg.scenario(), cfg.seed()).withParams(cfg.params()).withPlan(f.plan())
-                .withHorizon(horizon).withStopOnViolation(true).withCheckpointInterval(25));
-        Map<String, Object> m = new TreeMap<>();
-        m.put("formatVersion", FORMAT_VERSION);
-        m.put("kind", KIND);
-        m.put("tool", "chronos 0.2.0");
-        m.put("timelineId", timelineId);
-        m.put("scenario", cfg.scenario());
-        m.put("params", new TreeMap<>(cfg.params()));
-        m.put("seed", cfg.seed());
-        m.put("horizon", horizon);
         Map<String, Object> ex = new TreeMap<>();
         List<Object> cands = new ArrayList<>();
         for (SystematicExplorer.Candidate c : cfg.candidates()) cands.add(c.rule().toMap());
@@ -50,17 +38,41 @@ public final class Counterexample {
         ex.put("maxCases", cfg.maxCases());
         ex.put("stopAtFirst", cfg.stopAtFirst());
         ex.put("pruneSupersets", cfg.pruneSupersets());
-        m.put("exploration", ex);
-        m.put("caseIndex", f.caseIndex());
-        m.put("faults", f.faults());
-        m.put("plan", f.plan().toList());
+        Map<String, Object> origin = new TreeMap<>();
+        origin.put("exploration", ex);
+        origin.put("caseIndex", f.caseIndex());
+        return saveRun(store, registry, timelineId, cfg.scenario(), cfg.params(), cfg.seed(), f.run().header().horizon(), f.plan(), f.faults(),
+                f.invariant(), f.violationEvent(), f.traceDigest(), f.events(), origin);
+    }
+
+    /**
+     * Records a violating run as a timeline and writes the versioned, checksummed document for it. {@code origin} holds how the schedule was found
+     * (an exploration configuration, a minimization) and is stored verbatim; {@link #verify} does not need it.
+     */
+    public static Path saveRun(TimelineStore store, chronos.sdk.ScenarioRegistry registry, String timelineId, String scenario, Map<String, String> params,
+                               long seed, long horizon, FaultPlan plan, List<String> faults, String invariant, String violationEvent, String traceDigest,
+                               long events, Map<String, Object> origin) {
+        Recording.record(store, registry, timelineId, Recording.Spec.of(scenario, seed).withParams(params).withPlan(plan)
+                .withHorizon(horizon).withStopOnViolation(true).withCheckpointInterval(25));
+        Map<String, Object> m = new TreeMap<>();
+        m.put("formatVersion", FORMAT_VERSION);
+        m.put("kind", KIND);
+        m.put("tool", "chronos 0.2.0");
+        m.put("timelineId", timelineId);
+        m.put("scenario", scenario);
+        m.put("params", new TreeMap<>(params));
+        m.put("seed", seed);
+        m.put("horizon", horizon);
+        m.putAll(origin);
+        m.put("faults", faults);
+        m.put("plan", plan.toList());
         Map<String, Object> v = new TreeMap<>();
-        v.put("invariant", f.invariant());
-        v.put("eventId", f.violationEvent());
+        v.put("invariant", invariant);
+        v.put("eventId", violationEvent);
         m.put("violation", v);
-        m.put("traceDigest", f.traceDigest());
+        m.put("traceDigest", traceDigest);
         m.put("logHash", LogHash.of(store.events(timelineId))); // of the stored timeline (its events carry its id); the id-neutral trace digest is the cross-check
-        m.put("events", f.events());
+        m.put("events", events);
         m.put("checksum", Canon.sha256(Canon.json(m)));
         try {
             Files.createDirectories(dir(store));

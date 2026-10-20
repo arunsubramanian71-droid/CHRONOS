@@ -16,6 +16,7 @@ final class TestRegistry implements ScenarioRegistry {
         l.add("twopairs");
         l.add("clocky");
         l.add("chain");
+        l.add("doomed");
         return l;
     }
 
@@ -24,6 +25,7 @@ final class TestRegistry implements ScenarioRegistry {
         if (name.equals("twopairs")) return new TwoPairs();
         if (name.equals("clocky")) return new Clocky();
         if (name.equals("chain")) return new Chain();
+        if (name.equals("doomed")) return new Doomed();
         return demo.create(name, params);
     }
 
@@ -45,6 +47,22 @@ final class TestRegistry implements ScenarioRegistry {
         public long defaultHorizon() { return 200; }
         public boolean stopOnViolation() { return false; }
         public List<NodeSpec> nodes() { return List.of(new NodeSpec("a", Source::new), new NodeSpec("b", Relay::new), new NodeSpec("c", Sink::new)); }
+    }
+
+    /** Chain with an invariant that breaks as soon as c receives anything: it fails with no fault at all (failure minimization's "needs no fault" case). */
+    static final class Doomed implements Scenario {
+        public String name() { return "doomed"; }
+        public long defaultHorizon() { return 200; }
+        public List<NodeSpec> nodes() { return List.of(new NodeSpec("a", Source::new), new NodeSpec("b", Relay::new), new NodeSpec("c", Sink::new)); }
+        public List<Invariant> invariants() {
+            return List.of(new Invariant() {
+                public String name() { return "c-stays-empty"; }
+                public Optional<String> check(WorldView view) {
+                    Object r = view.read("c", "volatile.received");
+                    return r instanceof Number n && n.longValue() > 0 ? Optional.of("c received " + n) : Optional.empty();
+                }
+            });
+        }
     }
 
     static final class Source implements Node {

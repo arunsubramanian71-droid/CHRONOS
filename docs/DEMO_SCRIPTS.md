@@ -184,6 +184,29 @@ $ explore control --max-faults 1 --times 30,90
   expect: no invariant violation in the whole explored bound
 ```
 
+## Failure minimization: from a noisy chaos failure to the faults that matter
+
+```chronos-script
+$ run re --seed 5 --plan chaos
+  expect: VIOLATED
+$ minimize T0 --save
+  expect: fault rules: 5 -> 1
+  expect: kept: c1-partition
+  expect: shrunk: c1-partition.duration
+  expect: check: without c1-partition: no invariant is violated
+  expect: RESULT: 1-minimal
+  expect: saved minimal failure as T1
+$ inspect T1 --goto violation --why
+  expect: chain from fault:c1-partition#1
+$ minimize T1
+  expect: fault rules: 1 -> 1
+$ run ka3 --seed 13 --plan chaos
+  expect: VIOLATED
+$ minimize T2 --max-runs 3
+  expect: NOT FINISHED
+  exit: 3
+```
+
 ## Phase 15: the static HTML report (AD-6) and the live viewer
 
 ```chronos-script

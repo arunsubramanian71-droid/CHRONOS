@@ -96,6 +96,20 @@ ended (`EXHAUSTED`, `CASE_LIMIT`, `FIRST_VIOLATION`) and, if it stopped early, h
 means "none within this bound, with this seed and horizon". `--save` records each violating schedule as a normal timeline plus a checksummed
 document in `counterexamples/`; `chronos counterexample FILE` re-executes it from the document alone and checks the same violation appears.
 
+A failure found by a random campaign usually carries faults that have nothing to do with it. `minimize` removes them:
+
+```bash
+chronos run re --seed 5 --plan chaos          # a chaos run with 5 fault rules that violates single-primary
+chronos minimize T0 --save                    # delta debugging: 5 rules -> 1 (the partition), its duration 310 -> 172 ms, horizon 1000 -> 301 ms
+chronos inspect T1 --goto violation --why     # the saved minimal failure explains itself
+```
+
+It re-executes the run from scratch under smaller and smaller fault plans (ddmin over the rules, then smaller `duration` and `by` values, then the
+shortest horizon) and keeps only a plan that violates **the same invariant**. It then re-runs the result without each kept rule and prints what
+happened, so the "1-minimal" claim is evidence, not assertion. It does not claim the smallest plan in the whole space, and `--max-runs N` makes it
+stop early (exit code 3, "NOT FINISHED"). `--save` stores the minimal failure as a timeline plus a checksummed document in `counterexamples/`
+(`chronos counterexample FILE`, `chronos incident export T1`).
+
 To give a failure to someone else, bundle it: `chronos incident export T0 --out t0.chronos-incident` writes one checksummed file (the
 timeline and its ancestors, the fault plan and interventions, the violation, the causal evidence, versions and reproduction steps). On the
 other machine: `chronos --data DIR incident info FILE` validates it without writing anything, `incident reproduce FILE` re-executes the

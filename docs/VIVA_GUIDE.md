@@ -96,6 +96,9 @@ orders roots by virtual time, node order (env last) and event id, and never comp
   (a divergent drop to that node). Absence and silence are labelled potential. The engine, for its part, links what an intervention changes to the
   intervention itself: ghost rules for removed faults, lane marks for removed inputs, moved fault windows, patched configuration, reseeded streams
   (DEV-36, DEV-43). Law M10 then holds in every case of a 120-intervention random sweep; a 30,000-seed run (66,427 comparisons) leaves none (DEV-47).
+* *What does `minimize` guarantee?* The plan it returns violates the same invariant, and re-running it without any single kept rule does not (the report
+  prints those runs). It is delta debugging (ddmin) plus a binary search on `duration`/`by`, so it is 1-minimal, not the minimum-size plan, and a
+  parameter found by binary search is the smallest value it *tried* that failed. It needs no instrumentation because every re-run is deterministic.
 * *Is the explorer a model checker?* No. `chronos explore` runs every subset of at most K declared faults for one seed, so "no violation" means "none
   in this bound"; it varies fault schedules, not message interleavings. It beats random sampling at the same budget in coverage of minimal causes
   (RE: 7 of 7 against 2 of 7) and can say "this whole space is clean" (KA-0), which random testing cannot (`docs/EVALUATION.md`).

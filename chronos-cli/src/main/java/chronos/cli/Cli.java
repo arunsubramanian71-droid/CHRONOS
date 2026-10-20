@@ -51,6 +51,7 @@ final class Cli {
               blind prepare [--token HEX] | begin | answer --root RULE... [--notes TEXT] | grade     blind-debugging kit (docs/BLIND_PROTOCOL.md)
               explore <scenario> [--max-faults K] [--times 100,300] [--duration D] [--nth N] [--kinds crash,partition,drop,pause] [--candidate SPEC]...
                       [--max-cases N] [--stop-first] [--no-prune] [--base none|default] [--save] [--save-max N] [--list]   bounded systematic fault-schedule exploration
+              minimize <timeline> [--max-runs N] [--no-shrink] [--save]   shrink a failing run's fault plan (delta debugging) to a 1-minimal one that fails the same way
               incident export <timeline> [--out FILE] | import FILE | info FILE | reproduce FILE    portable, checksummed incident bundle (lineage, evidence, reproduction)
               counterexample <file>               re-execute a saved counterexample and check the same violation appears
               local-replay <timeline> [node]      re-execute one node (or each node) alone from its recorded inputs and check its outputs (R5)
@@ -115,6 +116,7 @@ final class Cli {
             case "serve" -> serve(args);
             case "blind" -> blind(args);
             case "explore" -> explore(args);
+            case "minimize" -> minimize(args);
             case "incident" -> incident(args);
             case "counterexample" -> counterexample(args);
             case "reindex" -> {
@@ -729,6 +731,39 @@ final class Cli {
             out.println("  saved counterexample " + id + " (" + file + "); try: chronos inspect " + id + " --goto violation --why   |   chronos counterexample " + file);
         }
         return a.has("fail-on-violation") && !rep.findings().isEmpty() ? 1 : 0;
+    }
+
+    /** Delta-debugging a recorded failing run: the smallest fault plan (rules, then parameters, then horizon) that violates the same invariant. */
+    private int minimize(Args a) {
+        String tl = a.positional(0, "timeline");
+        TimelineHeader h = store.header(tl);
+        if (h.parentId() != null) throw new CliException(tl + " is a branch; minimize works on a recorded run with a fault plan (for a branch use `causes` or `search`)");
+        FailureMinimizer.Report rep;
+        try {
+            rep = new FailureMinimizer(registry).minimize(new FailureMinimizer.Config(h.scenario(), h.params(), h.seed(), h.faultPlan(), h.horizon(), a.num("max-runs", 2000), !a.has("no-shrink")));
+        } catch (IllegalArgumentException e) {
+            throw new CliException(tl + ": " + e.getMessage());
+        }
+        out.print(rep.text());
+        if (a.has("save")) {
+            String id = manager.allocateRootId();
+            Map<String, Object> origin = new TreeMap<>();
+            Map<String, Object> mz = new TreeMap<>();
+            mz.put("from", tl);
+            mz.put("originalRules", rep.original().rules().size());
+            mz.put("minimalRules", rep.minimal().rules().size());
+            mz.put("removed", rep.removed());
+            mz.put("executions", rep.executions());
+            mz.put("oneMinimal", rep.oneMinimal());
+            origin.put("minimization", mz);
+            List<String> names = new ArrayList<>();
+            for (FaultRule r : rep.minimal().rules()) names.add(r.id());
+            Path file = Counterexample.saveRun(store, registry, id, h.scenario(), h.params(), h.seed(), rep.minimalHorizon(), rep.minimal(), names, rep.invariant(), rep.violationEvent(),
+                    rep.traceDigest(), rep.minimalEvents(), origin);
+            out.println("  saved minimal failure as " + id + " (" + file + ")");
+            out.println("  try: chronos inspect " + id + " --goto violation --why   |   chronos counterexample " + file + "   |   chronos incident export " + id);
+        }
+        return rep.oneMinimal() ? 0 : 3;
     }
 
     /** Portable incident bundles: export a timeline with its lineage and evidence, validate and import one, reproduce its failure. */
