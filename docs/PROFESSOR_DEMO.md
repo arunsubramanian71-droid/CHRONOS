@@ -50,17 +50,20 @@ explicit coverage statement), `chronos incident export T0` (a portable, checksum
 
 | Claim | Evidence |
 |---|---|
-| 233 automated tests pass, 0 failures | `mvn -ntp clean package`, run on macOS and in a Linux container (see `IMPLEMENTATION_STATUS.md`); re-run on the extracted submission archive |
+| 235 automated tests pass, 0 failures | `mvn -ntp clean package`, run on macOS and in a Linux container (see `IMPLEMENTATION_STATUS.md`); re-run on the extracted submission archive |
 | 24 of 24 demonstration checks | `chronos demo`, exit code 0 (`docs/demo-output.txt`) |
-| Law M10 (the first causal divergence is the intervention; every root of the branch is in its future) | `M10CatalogueTest`; 4,000-seed sweep: 0 residual of 8,752 comparisons; 30,000-seed sweep: 0 of 66,427 |
-| Branches replay through their lineage | `InterventionFuzzTest`: 40,000 seeds of random interventions at random boundaries, every branch and nested branch replay-verified |
+| Law M10 (the first causal divergence is the intervention; every root of the branch is in its future) | `M10CatalogueTest`; on the final code a 4,000-seed sweep gave 0 residual of 8,752 comparisons and a 12,000-seed sweep 0 of 26,461 (`IMPLEMENTATION_STATUS.md`) |
+| Branches replay through their lineage | `InterventionFuzzTest`: seeds 1-10,000 and 40,001-50,000 on the final code (and 20,001-40,000 on the code before the OMISSION change), every branch and nested branch replay-verified, `chronos check` over every store written |
 | Performance targets | `docs/BENCHMARKS.md` (one machine, Apple M2 Max) |
 
 ## Honest answers to likely questions
 
-* *Is it fully compliant with the specification?* No. `docs/TRACEABILITY.md` lists every requirement with its status; `docs/DEVIATIONS.md` lists every interpretation, extension and defect (DEV-01 to DEV-53). Not done: per-vector delta compression (its trigger never occurred), the blind evaluation with a second person, Windows verification.
+* *Is it fully compliant with the specification?* No. `docs/TRACEABILITY.md` lists every requirement with its status; `docs/DEVIATIONS.md` lists every interpretation, extension and defect (DEV-01 to DEV-54). Not done: per-vector delta compression (its trigger never occurred), the blind evaluation with a second person, Windows verification.
 * *Is the causal analysis a proof of cause?* Certain edges (message, timer, step effect, fault) are real causes in the run. OMISSION edges, "displaced" events and the possible-silence section are labelled **potential**: they are hypotheses a reader can check. A counterfactual verdict is true for that simulated world, not for production.
 * *How do you know replay is really deterministic?* One decision source for all nondeterminism, identity-keyed randomness, a single thread, and a build rule that bans wall-clock and unseeded randomness in the core modules. Evidence: replay of every demo and 16,000 seeded run pairs identical, cross-JVM hash equality, and a deliberately bad node that replay catches.
+* *Why is the OMISSION scope for partitions what it is?* The specification's literal sentence gives an OMISSION edge to every node on a side of a partition, which also blames the partition for timers that wait for nothing (4 of the 5 edges in RE are the isolated node's own heartbeats). Requiring that the node heard from the other side avoids that but misses a partition that starts before the first contact. The final rule adds one thing: the partition dropped a message addressed to that node during the timer's wait. It never adds an edge the literal rule would not (`OmissionScopeStudyTest`, DEV-03).
+* *Did you implement delta compression of vector clocks?* No, and the specification makes it conditional on vector-clock cost dominating at 20 nodes. Benchmark B3b measures it: a clock stamp is about 3% of the time per event and the vector field about 30% of an encoded event at 20 nodes, so the trigger is not met (`docs/BENCHMARKS.md`).
+* *Has a person other than you used it?* No. The usability test (NFR-15) and the blind debugging protocol need participants; the protocols and sheets are ready (`docs/HUMAN_STUDIES.md`) and nothing is claimed about them.
 * *Is the explorer a model checker?* No. It runs every subset of at most K declared faults for one seed; "no violation" means none inside that bound. `minimize` returns a 1-minimal plan (no single rule can be removed), not necessarily the smallest.
 * *What if the log is damaged?* Each step group has a SHA-256 commit line; a torn tail is dropped, anything else is refused. `chronos check` reports the problem with the action. A rewrite that also repairs every checksum and the summary is caught only by replay against the code.
 * *What would you do next?* Windows verification, the blind debugging study and the new-user run (NFR-15) with real participants, and Windows beyond the CI job.

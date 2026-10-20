@@ -30,7 +30,7 @@ HTML report, benchmarks and documentation. **Full v0.2 compliance is NOT claimed
 | Replay verification | `LawsTest.m1*`, `SoakTest`, `FaultCatalogueTest` | chaos runs on every demo, every checkpoint of every demo, branches through their lineage; a mutated recording is caught at exactly the mutated event |
 | HTML report | `chronos report T0 --against T0.1`; `CliTest`; opened in a browser during development | generated, self-contained (no external reference, checked by the program), diagram/cone/path rendering inspected |
 | Benchmarks, soak, slow disk | `chronos-bench.jar all` (JDK 21, re-run on the final code, now including B11), `... jmh` | `docs/BENCHMARKS.md`; **10,000-seed chaos soak: 0 violations**; NFR-05 to NFR-09 all met |
-| Evaluation on unplanned failures | `chronos-bench.jar eval --seeds 400` | 800 chaos runs, 100 failures, root fault named in 94, but-for confirmed by counterfactual in 73 (`docs/EVALUATION.md`) |
+| Evaluation on unplanned failures | `chronos-bench.jar eval --seeds 400` | 800 chaos runs, 100 failures, root fault named in 97, but-for confirmed by counterfactual in 75 (`docs/EVALUATION.md`) |
 
 ### Test inventory (233)
 

@@ -110,6 +110,6 @@ orders roots by virtual time, node order (env last) and event id, and never comp
   and the causal evidence is recomputed from the events, so a bundle whose story does not match its log is rejected before anything is written.
 * *Does `why` always name the fault?* No, and the evaluation shows it: a fault is linked only to timers that noticed its silence, so a failure caused by a message that never arrived and that nothing was waiting for has no fault in its causal past (the tutorial case: chains 0/100, `causes` 100/100 on randomised cases). `why` therefore also prints a labelled "possible silence" hint (98-100/100 with it). Explanation says what happened; counterfactuals say what was necessary (`docs/EVALUATION.md`).
 * *How do you know the explanations are right on bugs you did not plant?* `docs/EVALUATION.md`: 800 chaos runs, 100 failures, a root fault
-  named in 94, and for 73 of them removing exactly that fault by a real counterfactual made the failure disappear; and what that does
+  named in 97, and for 75 of them removing exactly that fault by a real counterfactual made the failure disappear; and what that does
   not show (it is not blind).
 * *Are the benchmark numbers trustworthy?* They were measured on one machine with the method of Section 26 (`docs/BENCHMARKS.md`).

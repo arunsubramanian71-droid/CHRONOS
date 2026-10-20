@@ -27,17 +27,18 @@ Command: `java -jar chronos-bench/target/chronos-bench.jar eval --seeds 400` (ra
 
 | Scenario | Chaos seeds | Runs that failed | Root fault named | Counterfactual: failure disappears | Failure persists |
 |---|---|---|---|---|---|
-| RE (client, p, b) | 400 | 30 | 26 | 21 | 5 |
-| RE with two backups | 400 | 70 | 68 | 52 | 16 |
-| **Total** | 800 | **100** | **94** | **73** | **21** |
+| RE (client, p, b) | 400 | 30 | 28 | 22 | 6 |
+| RE with two backups | 400 | 70 | 69 | 53 | 16 |
+| **Total** | 800 | **100** | **97** | **75** | **22** |
 
 Reading it:
 
-* In **94 of 100** failures the first causal source of the violation was a *fault*. In the other 6 the first chain started from an input
-  or a node start; those 6 were **not diagnosed individually**, so no claim is made about them.
-* In **73 of those 94** the named fault was a **but-for cause**: removing exactly that rule made the failure disappear. That is the
+* In **97 of 100** failures the first causal source of the violation was a *fault*. In the other 3 the first chain started from an input
+  or a node start; those 3 were **not diagnosed individually**, so no claim is made about them. (Before the OMISSION scope of DEV-03 was
+  closed the figure was 94: three failures were caused by a partition that began before the first contact and had no OMISSION edge.)
+* In **75 of those 97** the named fault was a **but-for cause**: removing exactly that rule made the failure disappear. That is the
   strongest kind of agreement the tool can offer between its explanation and an independent experiment.
-* In **21** the failure **persisted**. That is the *overdetermined* case of KA-4 (another fault in the same run also breaks the system),
+* In **22** the failure **persisted**. That is the *overdetermined* case of KA-4 (another fault in the same run also breaks the system),
   or a different path to the same invariant. The tool does not claim otherwise: `FAILURE_PERSISTS` is exactly its documented answer, and
   `chronos causes` finds the critical *combination*.
 * The root kinds are diverse: partitions, crashes (two backups promote when the primary crashes), pauses (a GC-pause-like split brain),
@@ -115,10 +116,10 @@ Regenerate everything with `tools/regenerate-results.sh`.
   is real evidence of internal consistency, but a systematic modelling error would affect both.
 * **Evidence about the model, not reality** (Section 19): the simulated world follows CHRONOS's rules.
 * **Small scenarios.** RE has three or four nodes and a few dozen events per run; the million-event runs measure scale, not diagnosis.
-* **The 21 persisting cases were not diagnosed individually.** They are reported as the tool's own verdict.
+* **The 22 persisting cases were not diagnosed individually.** They are reported as the tool's own verdict.
 
 ## What a fuller evaluation would add
 
 1. The blind protocol with a second person on at least five bugs of increasing difficulty, recording time to diagnosis and wrong turns.
 2. Applications that were *not* written by the tool's authors (against the Node API), so planted-bug bias disappears.
-3. A manual diagnosis of a sample of the 21 `FAILURE_PERSISTS` cases, to check whether `causes` finds the right combinations.
+3. A manual diagnosis of a sample of the 22 `FAILURE_PERSISTS` cases, to check whether `causes` finds the right combinations.
