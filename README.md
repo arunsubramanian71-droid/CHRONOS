@@ -11,7 +11,7 @@ It is implemented from the architecture contract `CHRONOS System Specification v
 Terms such as *Node API*, *event*, *step*, *timeline*, *intervention*, *OMISSION edge* and *first causal divergence* are used
 exactly as the specification defines them.
 
-> **Status in one paragraph.** All eight modules exist and build (verified on macOS and on Linux); 214 automated tests pass; the flagship
+> **Status in one paragraph.** All eight modules exist and build (verified on macOS and on Linux); 233 automated tests pass; the flagship
 > demonstration (acceptance demonstrations AD-1 to AD-6 and known-answer scenarios KA-0, KA-2, KA-3, KA-4 on the replicated store "RE")
 > runs from one command with 24 self-checks; the whole fault catalogue and the whole intervention catalogue of the specification are
 > implemented and tested. What is **not** done (for example the blind
@@ -122,6 +122,8 @@ Below, `chronos` stands for `java -jar chronos-cli/target/chronos.jar`.
 | What had node b heard about p at this event? The smallest consistent cut containing events? | `chronos inspect T0 --knows b#12` · `chronos inspect T0 --cut b#12,client#3` (also `knows`/`cut` in `session`) |
 | Browse timelines in a browser: slider, diagram, world, why, compare (read-only live viewer) | `chronos serve --port 8080`, then open http://127.0.0.1:8080/ |
 | Store a recording gzip-compressed (opt-in, about 4.5x smaller; any command that records accepts it) | `chronos run re --compress` |
+| Verify the whole store (checksums, clocks, lineage, indexes, replay) with the fix for each problem; JSON for scripts | `chronos check` · `chronos check --json --strict` |
+| A machine-readable verification summary and experiment manifest beside every HTML report | `chronos report T0 --against T0.1` writes `reports/T0-vs-T0.1.verification.json` |
 | Shrink a failing chaos run to the faults that matter (delta debugging, 1-minimal, reproducible) | `chronos run re --seed 5 --plan chaos` · `chronos minimize T0 --save` |
 | Explore every fault schedule up to a bound (systematic, with counterexamples and an explicit coverage statement) | `chronos explore re --param partition=off --max-faults 2 --times 100,300 --save` · `chronos counterexample FILE` |
 | Hand a failure to someone else as one checksummed file; validate, reproduce and import it elsewhere | `chronos incident export T0 --out F` · `incident info F` · `incident reproduce F` · `incident import F` |
@@ -166,4 +168,4 @@ Measured results (and which targets of Section 8 were met or missed) are in [`do
   (`docs/EVALUATION.md` evaluates the analysers on 800 unplanned chaos runs instead, and says what that does not show).
 * Verified on macOS (Apple Silicon, JDK 21) and on Linux (Ubuntu 24.04 in a container); **Windows is not verified**.
 * A counterfactual is evidence about the simulated world under CHRONOS's rules, not proof about reality (Section 19).
-* Interpretations and extensions of the specification are recorded as DEV-01 to DEV-48 in `docs/DEVIATIONS.md`.
+* Interpretations and extensions of the specification are recorded as DEV-01 to DEV-52 in `docs/DEVIATIONS.md`.

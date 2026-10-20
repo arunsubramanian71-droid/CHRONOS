@@ -17,6 +17,7 @@ final class TestRegistry implements ScenarioRegistry {
         l.add("clocky");
         l.add("chain");
         l.add("doomed");
+        l.add("hostile");
         return l;
     }
 
@@ -26,6 +27,7 @@ final class TestRegistry implements ScenarioRegistry {
         if (name.equals("clocky")) return new Clocky();
         if (name.equals("chain")) return new Chain();
         if (name.equals("doomed")) return new Doomed();
+        if (name.equals("hostile")) return new Hostile();
         return demo.create(name, params);
     }
 
@@ -62,6 +64,31 @@ final class TestRegistry implements ScenarioRegistry {
                     return r instanceof Number n && n.longValue() > 0 ? Optional.of("c received " + n) : Optional.empty();
                 }
             });
+        }
+    }
+
+    /** Every string an application controls (node names, notes, message bodies, state, invariant messages) is markup: reports and the viewer must not execute any of it. */
+    static final class Hostile implements Scenario {
+        static final String EVIL = "<script>alert(1)</script>\"><img src=x onerror=alert(2)>&amp;]]></pre></svg><!--";
+        public String name() { return "hostile"; }
+        public long defaultHorizon() { return 200; }
+        public List<NodeSpec> nodes() { return List.of(new NodeSpec("a<b>", Evil::new), new NodeSpec("c\"d", Sink::new)); }
+        public List<Invariant> invariants() {
+            return List.of(new Invariant() {
+                public String name() { return "inv<i>"; }
+                public Optional<String> check(WorldView view) {
+                    Object r = view.read("c\"d", "volatile.received");
+                    return r instanceof Number n && n.longValue() > 0 ? Optional.of(EVIL) : Optional.empty();
+                }
+            });
+        }
+    }
+
+    static final class Evil implements Node {
+        public void onStart(NodeContext c) {
+            c.note(Hostile.EVIL);
+            c.state().put("x", Hostile.EVIL);
+            c.send("c\"d", Hostile.EVIL, Map.of("body", Hostile.EVIL));
         }
     }
 

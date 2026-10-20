@@ -65,6 +65,11 @@ class PersistenceTest {
         ReplayEngine.Result r = new ReplayEngine(store, new TestRegistry()).verifyFrom("T0", null);
         // the recorded log is only a prefix, so the replay reports that the recording is shorter, never a wrong match
         assertTrue(r.ok() || r.violation().getMessage().contains("recording ended") || r.violation().getMessage().contains("end-state"), r.summary());
+        // `chronos check` calls it what it is: not damage, an unfinished run (a warning with the action), and every other check passes
+        StoreChecker.Report rep = new StoreChecker(store, new TestRegistry()).check(List.of(), false);
+        assertTrue(rep.ok(), rep.text());
+        assertEquals(StoreChecker.Status.WARN, rep.findings().stream().filter(f -> f.check().equals("summary")).findFirst().orElseThrow().status(), rep.text());
+        assertTrue(rep.findings().stream().noneMatch(f -> f.status() == StoreChecker.Status.FAIL), rep.text());
     }
 
     @Test
@@ -85,6 +90,9 @@ class PersistenceTest {
             List<Event> got = new TimelineStore(copy).events(t0);
             assertTrue(got.size() <= full.size());
             for (int k = 0; k < got.size(); k++) assertEquals(full.get(k), got.get(k));
+            // a finished timeline whose log lost its end never passes unnoticed
+            StoreChecker.Report rep = new StoreChecker(new TimelineStore(copy), new TestRegistry()).check(List.of(t0), false);
+            assertEquals(got.size() == full.size(), rep.ok(), "cut at " + cut + ": " + rep.text());
             assertEquals(got.isEmpty() ? List.of() : List.of(), got.isEmpty() ? List.of() : List.of());
             ok++;
         }

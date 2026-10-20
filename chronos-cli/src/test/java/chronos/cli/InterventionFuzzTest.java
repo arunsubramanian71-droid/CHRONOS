@@ -112,6 +112,9 @@ class InterventionFuzzTest {
                     }
                 }
             }
+            // everything this seed wrote (a chaos root, its branches and their branches) is a consistent store: no failure, and no warning on a freshly written one
+            StoreChecker.Report rep = new StoreChecker(env.store, reg).check(List.of(), false);
+            assertTrue(rep.ok() && rep.count(StoreChecker.Status.WARN) == 0, sc + " seed " + seed + ": " + rep.text());
         }
         if (from == 1) {
             assertTrue(applied >= seeds * 2, "applied " + applied + ", refused " + refused);

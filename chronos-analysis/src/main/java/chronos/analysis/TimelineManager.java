@@ -72,6 +72,10 @@ public final class TimelineManager {
         }
     }
 
+    private synchronized void release(String id) {
+        reserved.remove(id);
+    }
+
     /** The result of a branch run. */
     public record BranchResult(String timelineId, long branchSeq, RunResult result, TimelineHeader header) {}
 
@@ -130,6 +134,7 @@ public final class TimelineManager {
     public BranchResult branchAs(String childId, String parentId, long atSeq, List<Intervention> ivs, Long horizon, String label) {
         TimelineSummary parentSummary = store.summary(parentId);
         if (parentSummary == null) throw new IllegalStateException("timeline " + parentId + " is not completed; only completed timelines can be branched (they are immutable)");
+        if (horizon != null && horizon < 0) throw new IllegalArgumentException("the horizon must not be negative (got " + horizon + " ms)");
         long p = roundToBoundary(parentId, atSeq);
         TimelineHeader parentHeader = store.header(parentId);
         ReplayEngine.PausedWorld w = replay.buildAt(parentId, p);
@@ -140,6 +145,7 @@ public final class TimelineManager {
         if (pinned) child = child.withParam(TimelineHeader.CONTINUATION_PARAM, "pinned");
         WorldImage atBranchPoint = engine.captureImage();
         TimelineWriter writer = store.openWriter(child);
+        boolean finished = false;
         try {
             writer.checkpoint(atBranchPoint); // a checkpoint is stored at every branch point (Section 17 rule 5)
             DecisionSource policy = new RecordDecisionSource(scenario, child.seed());
@@ -150,9 +156,14 @@ public final class TimelineManager {
             engine.setOptions(new RunOptions(h, child.stopOnViolation(), checkpointInterval));
             engine.applyInterventions(ivs);
             RunResult result = engine.runToEnd();
+            finished = true;
             return new BranchResult(childId, p, result, child);
         } finally {
             writer.close();
+            if (!finished) { // a refused intervention (unknown node, self-swap...) must not leave a half-written branch behind
+                store.discardUnfinished(childId);
+                release(childId);
+            }
         }
     }
 

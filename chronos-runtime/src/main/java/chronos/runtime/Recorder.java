@@ -68,6 +68,7 @@ public final class Recorder {
         this.timelineId = newTimelineId;
         this.sinks = new ArrayList<>(newSinks);
         this.hash = new LogHash();
+        this.hashing = true; // the replay up to the branch point ran with hashing off; the branch's own events are what the summary's hash covers
     }
 
     public void closeSinks() {

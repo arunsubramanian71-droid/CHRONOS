@@ -96,6 +96,21 @@ ended (`EXHAUSTED`, `CASE_LIMIT`, `FIRST_VIOLATION`) and, if it stopped early, h
 means "none within this bound, with this seed and horizon". `--save` records each violating schedule as a normal timeline plus a checksummed
 document in `counterexamples/`; `chronos counterexample FILE` re-executes it from the document alone and checks the same violation appears.
 
+Is the store itself sound? `chronos check` verifies every timeline without changing anything and says what to do about each problem:
+
+```bash
+chronos check                    # logs, checksums, clocks, lineage, indexes, checkpoints and a full deterministic replay of each finished timeline
+chronos check T0.1 --no-replay   # just that timeline (and skip the replay)
+chronos check --json             # the same, machine-readable
+chronos check --strict           # exit code 2 on warnings too (an interrupted write, a missing index...)
+```
+
+(On the demo data directory it reports exactly one failure, the deliberately nondeterministic node of AD-2: a store can be intact and still
+hold a run that does not replay, and the check says which.) `OK` means every check passed, `WARN` means a recoverable condition with the action named (for example `chronos reindex T1`), `FAIL` names the
+damaged record and tells you to restore the timeline from a backup or an incident bundle. Other timelines are still checked. Every `report` also
+writes `<report>.verification.json`: the experiment manifest (scenario, parameters, seed, fault plan, interventions of the lineage, code
+version), a fresh replay and integrity verdict, and for `--against` the divergence findings, so a result can be checked by a program.
+
 A failure found by a random campaign usually carries faults that have nothing to do with it. `minimize` removes them:
 
 ```bash

@@ -27,4 +27,20 @@ public interface LogReader {
     Optional<WorldImage> checkpointAtOrBefore(String timelineId, long seq);
 
     List<Long> checkpointSeqs(String timelineId);
+
+    /**
+     * As {@link #checkpointAtOrBefore}, but only an image that is the world at the step boundary of its position. The image written when a
+     * run finishes is taken after the run's trailing silent steps (agenda items that record no event, such as a fault rule for a crashed node) and
+     * says so with {@code liveTime}; resuming a branch or a time-travel cursor from it would lose those pending items, so it is skipped in favour of
+     * the next older image (DEV-52). A full verification may still start from it ({@link #checkpointAtOrBefore}).
+     */
+    default Optional<WorldImage> boundaryCheckpointAtOrBefore(String timelineId, long seq) {
+        long at = seq;
+        while (at >= 0) {
+            Optional<WorldImage> c = checkpointAtOrBefore(timelineId, at);
+            if (c.isEmpty() || !c.get().data().containsKey("liveTime")) return c;
+            at = c.get().seq() - 1;
+        }
+        return Optional.empty();
+    }
 }

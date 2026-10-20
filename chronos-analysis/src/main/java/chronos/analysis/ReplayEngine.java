@@ -86,7 +86,7 @@ public final class ReplayEngine {
     /** R4: a live world at step boundary p of a timeline, reached by prefix replay (verified as it goes). */
     public PausedWorld buildAt(String timelineId, long p) {
         if (!log.groupEnds(timelineId).contains(p)) throw new IllegalArgumentException("position " + p + " of " + timelineId + " is not a step boundary");
-        WorldImage start = log.checkpointAtOrBefore(timelineId, p).orElse(null);
+        WorldImage start = log.boundaryCheckpointAtOrBefore(timelineId, p).orElse(null);
         Replay r = new Replay(timelineId, p, start, null);
         DeterminismViolation v = r.run();
         if (v != null) throw v;

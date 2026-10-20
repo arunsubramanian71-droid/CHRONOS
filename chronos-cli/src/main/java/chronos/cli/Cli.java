@@ -51,6 +51,7 @@ final class Cli {
               blind prepare [--token HEX] | begin | answer --root RULE... [--notes TEXT] | grade     blind-debugging kit (docs/BLIND_PROTOCOL.md)
               explore <scenario> [--max-faults K] [--times 100,300] [--duration D] [--nth N] [--kinds crash,partition,drop,pause] [--candidate SPEC]...
                       [--max-cases N] [--stop-first] [--no-prune] [--base none|default] [--save] [--save-max N] [--list]   bounded systematic fault-schedule exploration
+              check [timeline]... [--no-replay] [--json] [--strict]   verify the store: logs, checksums, clocks, lineage, indexes, checkpoints, replay; actionable diagnostics
               minimize <timeline> [--max-runs N] [--no-shrink] [--save]   shrink a failing run's fault plan (delta debugging) to a 1-minimal one that fails the same way
               incident export <timeline> [--out FILE] | import FILE | info FILE | reproduce FILE    portable, checksummed incident bundle (lineage, evidence, reproduction)
               counterexample <file>               re-execute a saved counterexample and check the same violation appears
@@ -117,6 +118,7 @@ final class Cli {
             case "blind" -> blind(args);
             case "explore" -> explore(args);
             case "minimize" -> minimize(args);
+            case "check" -> check(args);
             case "incident" -> incident(args);
             case "counterexample" -> counterexample(args);
             case "reindex" -> {
@@ -733,6 +735,15 @@ final class Cli {
         return a.has("fail-on-violation") && !rep.findings().isEmpty() ? 1 : 0;
     }
 
+    /** Whole-store integrity check with actionable diagnostics; exit 0 = no failure (warnings allowed unless --strict), 2 = damage found. */
+    private int check(Args a) {
+        List<String> only = new ArrayList<>();
+        for (int i = 0; i < a.positionalCount(); i++) only.add(a.positional(i, "timeline"));
+        StoreChecker.Report rep = new StoreChecker(store, registry).check(only, !a.has("no-replay"));
+        out.print(a.has("json") ? rep.json() + "\n" : rep.text());
+        return !rep.ok() || (a.has("strict") && rep.count(StoreChecker.Status.WARN) > 0) ? 2 : 0;
+    }
+
     /** Delta-debugging a recorded failing run: the smallest fault plan (rules, then parameters, then horizon) that violates the same invariant. */
     private int minimize(Args a) {
         String tl = a.positional(0, "timeline");
@@ -983,6 +994,14 @@ final class Cli {
         }
         if (HtmlReport.referencesExternalResources(html)) throw new IllegalStateException("the report references an external resource; it must be self-contained");
         out.println("report written: " + file.toAbsolutePath() + " (" + html.length() / 1024 + " KiB, self-contained, no network access)");
+        // the machine-readable companion: manifest, recording, verification and comparison, recomputed from the store
+        Path json = Path.of(file.toString().replaceAll("\\.html?$", "") + ".verification.json");
+        try {
+            Files.writeString(json, VerificationSummary.json(VerificationSummary.build(store, manager.replayEngine(), registry, tl, against, cf, dataDir.toString())), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        out.println("verification summary written: " + json.toAbsolutePath() + " (machine-readable: manifest, replay and integrity verdicts, comparison)");
         return file;
     }
 

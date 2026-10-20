@@ -256,7 +256,7 @@ public final class TimeTravelSession {
         Map<String, InFlight> info = new HashMap<>();
         Map<String, Long> delay = new HashMap<>();
         int from = 0;
-        WorldImage img = useCheckpoint ? log.checkpointAtOrBefore(timelineId, cursor).orElse(null) : null;
+        WorldImage img = useCheckpoint ? log.boundaryCheckpointAtOrBefore(timelineId, cursor).orElse(null) : null;
         if (img != null) {
             from = (int) img.seq() + 1;
             for (Object o : Canon.list(img.data().get("agenda"))) {
@@ -305,7 +305,7 @@ public final class TimeTravelSession {
     List<PendingTimer> timers(boolean useCheckpoint) {
         Map<String, PendingTimer> pending = new LinkedHashMap<>();
         int from = 0;
-        WorldImage img = useCheckpoint ? log.checkpointAtOrBefore(timelineId, cursor).orElse(null) : null;
+        WorldImage img = useCheckpoint ? log.boundaryCheckpointAtOrBefore(timelineId, cursor).orElse(null) : null;
         if (img != null) {
             from = (int) img.seq() + 1;
             for (Object n : Canon.list(img.data().get("nodes")))

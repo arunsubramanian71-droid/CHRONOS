@@ -96,6 +96,10 @@ orders roots by virtual time, node order (env last) and event id, and never comp
   (a divergent drop to that node). Absence and silence are labelled potential. The engine, for its part, links what an intervention changes to the
   intervention itself: ghost rules for removed faults, lane marks for removed inputs, moved fault windows, patched configuration, reseeded streams
   (DEV-36, DEV-43). Law M10 then holds in every case of a 120-intervention random sweep; a 30,000-seed run (66,427 comparisons) leaves none (DEV-47).
+* *How do you know the stored data is intact?* Every step group has a commit line with a SHA-256 of its events; a torn tail is dropped, anything else
+  refuses to load. `chronos check` goes further (clocks against the graph, lineage, summary, index, checkpoints, a full replay) and tells the user the
+  action for each problem. It cannot detect a rewrite that fixes up all the checksums and the summary as well; replay against the code catches that,
+  and the fuzzers (`CorruptionFuzzTest`) show that random damage is detected or leaves a lossless prefix.
 * *What does `minimize` guarantee?* The plan it returns violates the same invariant, and re-running it without any single kept rule does not (the report
   prints those runs). It is delta debugging (ddmin) plus a binary search on `duration`/`by`, so it is 1-minimal, not the minimum-size plan, and a
   parameter found by binary search is the smallest value it *tried* that failed. It needs no instrumentation because every re-run is deterministic.

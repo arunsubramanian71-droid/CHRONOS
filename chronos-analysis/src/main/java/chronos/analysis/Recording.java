@@ -46,6 +46,7 @@ public final class Recording {
     public static TimelineHeader headerFor(Scenario sc, Spec spec, String timelineId) {
         FaultPlan plan = spec.plan() != null ? spec.plan() : sc.defaultFaultPlan();
         long horizon = spec.horizon() != null ? spec.horizon() : sc.defaultHorizon();
+        if (horizon < 0) throw new IllegalArgumentException("the horizon must not be negative (got " + horizon + " ms)");
         boolean stop = spec.stopOnViolation() != null ? spec.stopOnViolation() : sc.stopOnViolation();
         return new TimelineHeader(timelineId, null, -1, sc.name(), spec.params(), spec.seed(), sc.nodes().stream().map(n -> n.name()).toList(),
                 plan, List.of(), horizon, stop, Formats.FORMAT_VERSION, sc.version(), CodeFingerprint.of(sc), null);
@@ -56,14 +57,18 @@ public final class Recording {
         Scenario sc = registry.create(spec.scenario(), spec.params());
         TimelineHeader h = headerFor(sc, spec, timelineId);
         TimelineWriter writer = store.openWriter(h);
+        boolean finished = false;
         try {
             Recorder rec = new Recorder(timelineId, 0, List.of(writer));
             Engine e = Engine.create(sc, h.seed(), h.faultPlan(), new RunOptions(h.horizon(), h.stopOnViolation(), spec.checkpointInterval()),
                     new RecordDecisionSource(sc, h.seed()), rec);
             e.boot();
-            return e.runToEnd();
+            RunResult result = e.runToEnd();
+            finished = true;
+            return result;
         } finally {
             writer.close();
+            if (!finished) store.discardUnfinished(timelineId); // a refused run (an invalid fault rule) must not leave a half-written timeline in the store
         }
     }
 

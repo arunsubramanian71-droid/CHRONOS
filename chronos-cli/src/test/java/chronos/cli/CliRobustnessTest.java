@@ -28,7 +28,7 @@ class CliRobustnessTest {
         run("run", "re", "--no-stop"); // T0
         run("branch", "T0", "--heal-earlier", "200"); // T0.1
         List<String> commands = List.of("run", "ls", "show", "inspect", "session", "verify", "replay", "determinism", "hash", "branch", "counterfactual", "compare", "causes", "search",
-                "campaign", "report", "delete", "local-replay", "reindex", "inject", "explore", "counterexample", "incident", "blind", "serve", "demo-nope", "scenarios", "help");
+                "campaign", "report", "delete", "local-replay", "reindex", "inject", "explore", "minimize", "check", "counterexample", "incident", "blind", "serve", "demo-nope", "scenarios", "help");
         List<List<String>> badTails = List.of(
                 List.of(), List.of("nope"), List.of("T99"), List.of("T0", "T99"), List.of("T0", "--goto", "nowhere"), List.of("T0", "--goto", "-5"), List.of("T0", "--back", "abc"),
                 List.of("re", "--seed", "x"), List.of("re", "--horizon", "-1"), List.of("re", "--fault", "bogus"), List.of("re", "--fault", "partition:1"), List.of("re", "--fault", "crash:zz:5"),

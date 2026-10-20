@@ -138,6 +138,18 @@ public final class TimelineStore implements LogReader {
         }
     }
 
+    /**
+     * Removes a timeline whose recording failed before it finished (a run that was refused after its writer was opened, for example an
+     * intervention naming a node that does not exist). It only ever removes a timeline that has no summary, i.e. one that never completed,
+     * and has no children; a finished timeline is never touched. Returns true if something was removed. A crash (kill -9) cannot run this;
+     * the leftover is then reported by {@code chronos check} as a warning.
+     */
+    public synchronized boolean discardUnfinished(String id) {
+        if (!Files.isDirectory(dirOf(id)) || Files.exists(dirOf(id).resolve("summary.json")) || !children(id).isEmpty()) return false;
+        delete(id);
+        return true;
+    }
+
     /** Deletes a leaf timeline (FR-30). A timeline with children cannot be deleted: its descendants share its prefix (D-12). */
     public synchronized void delete(String id) {
         if (!Files.isDirectory(dirOf(id))) throw new UnknownTimelineException(id);

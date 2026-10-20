@@ -95,6 +95,13 @@ $ verify T1
 $ local-replay T1
   expect: MISMATCH
   exit: 1
+$ check
+  expect: FAIL replay
+  expect: not deterministic
+  expect: 1 timeline(s) do not replay deterministically
+  exit: 2
+$ check T0 --strict
+  expect: STORE OK: 1 timelines
 ```
 
 ## Phases 10a and 10b: time travel (AD-3)
@@ -205,6 +212,25 @@ $ run ka3 --seed 13 --plan chaos
 $ minimize T2 --max-runs 3
   expect: NOT FINISHED
   exit: 3
+```
+
+## Integrity: `check`, refused operations leave nothing behind, and the report's verification summary
+
+```chronos-script
+$ run re --no-stop
+$ branch T0 --heal-earlier 200
+$ check
+  expect: STORE OK: 2 timelines, 0 warnings, 0 failures
+  expect: every finished timeline replayed deterministically
+$ branch T0 --at 20 --crash ghost:5
+  expect: unknown node ghost
+  exit: 1
+$ check --strict
+  expect: STORE OK: 2 timelines
+$ report T0 --against T0.1
+  expect: verification summary written
+$ check --json --no-replay
+  expect: "ok":true
 ```
 
 ## Phase 15: the static HTML report (AD-6) and the live viewer
