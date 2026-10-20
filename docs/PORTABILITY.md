@@ -4,9 +4,11 @@
 |---|---|---|
 | macOS (Apple Silicon, JDK 21.0.12, Maven 3.10.0) | **verified** | `mvn -ntp clean package`: all tests pass; demo 24 of 24; benchmarks |
 | Linux (Ubuntu 24.04 aarch64 container, Temurin 21, Maven 3.9.16) | **verified** | `mvn -ntp package` on a copy of the source: all tests pass, golden files generated on macOS pass; packaged jar's demo 24 of 24 |
-| Windows | **NOT VERIFIED** (no Windows machine or CI was available) | prepared, see below |
+| GitHub Actions `ubuntu-latest` (x86-64) | **verified** | run 39414554555: full build, 235 tests, demonstration |
+| GitHub Actions `macos-latest` | **verified** | same run |
+| GitHub Actions `windows-latest` | **verified on the hosted runner** | same run: full build, 235 tests, demonstration. Not tested on a Windows machine of the author |
 
-## What was done so that Windows should work
+## What was done so that Windows works
 
 * No platform-specific code: the engine, store and analysis use `java.nio.file` and `Path` only; timeline ids and event ids never become
   file names (files are `timelines/<id>/events/NNNNNN.log`, `checkpoints/NNNNNNNNNN.ckpt`, `index/main.idx`, ids are validated: no `/`, `\` or `..`).
@@ -18,10 +20,18 @@
   works within one volume, which is where a timeline always lives.
 * The program and the tests that start a child JVM (`chronos determinism --jvm`, the kill test) locate it through the `java.home` system property, never a `java` found on the PATH.
 * The build refuses any JDK other than 21 (enforcer rule), on every platform.
-* `.github/workflows/build.yml` runs the same two commands on `ubuntu-latest`, `macos-latest` and `windows-latest` if the repository is ever
-  published. **First run (2026-10-20, commit of the published branch): macOS passed; Ubuntu failed before any project code ran (Maven could not download `org.junit:junit-bom:5.11.4` from Central, a version that exists: an external download failure, not a project defect; the workflow now retries that resolution step); Windows failed three tests that assumed `/` in paths and LF line endings (DEV-53, fixed in the tests and `.gitattributes`). Windows stays NOT VERIFIED until a Windows job of the workflow passes.**
+* `.github/workflows/build.yml` runs the build (all 235 tests) and the flagship demonstration on `ubuntu-latest`, `macos-latest` and `windows-latest` with JDK 21 (Temurin).
+  History of its runs on https://github.com/arunsubramanian71-droid/CHRONOS (2026-10-20):
 
-## How to verify on Windows (about 5 minutes with JDK 21 and Maven installed)
+  | Run | Commit | Ubuntu | macOS | Windows | Note |
+  |---|---|---|---|---|---|
+  | 39395403462 | `2df09fd` | FAIL | PASS | FAIL | Ubuntu: Maven could not download `org.junit:junit-bom:5.11.4` (a published artifact; external download failure, cause not provable because the job log needs a login); Windows: three tests assumed `/` and LF (DEV-53) |
+  | 39397381422 | `0e6674c` | PASS | PASS | PASS | after the DEV-53 fixes and the retried model-resolution step |
+  | 39414554555 | `9e89ed5` | PASS | PASS | PASS | the final code (later commits change documents only); every job ran through packaging, all tests and the demonstration |
+
+  "PASS" means the job's steps *Build and test (all eight modules)* and *Flagship demonstration* both succeeded (checked through the GitHub API), not only the model-resolution step.
+
+## How to verify on Windows yourself (about 5 minutes with JDK 21 and Maven installed)
 
 ```bat
 git clone <the repository>  &  cd Chronos
@@ -30,5 +40,5 @@ java -jar chronos-cli\target\chronos.jar --data chronos-data demo
 ```
 
 Expected: `BUILD SUCCESS`, 235 tests, 0 failures, and `demonstration finished: 24 of 24 checks passed - ALL PASSED`. Please record the result
-(and any failure with its output) in `IMPLEMENTATION_STATUS.md`; until then Windows stays NOT VERIFIED. Likely places for a failure, if any:
+(and any failure with its output) in `IMPLEMENTATION_STATUS.md`. The Windows evidence so far is the GitHub-hosted `windows-latest` runner above, not a Windows machine of the author. Likely places for a failure, if any:
 the process-kill test (`PersistenceTest`, uses `Process.destroyForcibly`), and path separators in test expectations.

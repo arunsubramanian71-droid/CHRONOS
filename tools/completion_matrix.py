@@ -22,7 +22,7 @@ OVERRIDES = {
                "needs a new team member to run the flagship demo from the README with three commands in under 10 minutes; the commands were timed by the author "
                "(docs/EVALUATION.md, 'NFR-15 dry run') but that is not the specified evidence"),
     "NFR-14": ("PASS",
-               "macOS (local), Linux (container) and the GitHub Actions jobs ubuntu-latest, macos-latest and windows-latest; see docs/PORTABILITY.md for the run ids"),
+               "macOS and Linux locally, plus the GitHub Actions jobs ubuntu-latest, macos-latest and windows-latest (full build, all tests and the demonstration); run ids in docs/PORTABILITY.md"),
     "NFR-10": ("PASS", "NFR-10 asks to measure and report bytes per event and sets no pass-or-fail target: B4 and B12 in docs/BENCHMARKS.md report 275 bytes/event at 5 nodes and more at 20"),
     "Blind": ("BLOCKED BY EXTERNAL INPUT",
               "the blind debugging protocol (Section 25) needs a second person; the kit is built and tested (BlindKitTest), no session has been run"),

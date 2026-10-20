@@ -75,8 +75,8 @@ orders roots by virtual time, node order (env last) and event id, and never comp
 
 * *Why a simulation instead of tracing real Java programs?* Decision D-01: replaying arbitrary Java needs control over threads, clocks,
   I/O and native code; applications are written against the small Node API instead.
-* *What is not implemented?* See `docs/DEVIATIONS.md` ("Not implemented") and the NOT IMPLEMENTED rows of `docs/TRACEABILITY.md`:
-  per-vector delta compression, the blind evaluation with a second person, Windows verification. (The
+* *What is not implemented?* See `docs/COMPLETION_MATRIX.md` (generated) and `docs/DEVIATIONS.md`: the blind evaluation and the new-user run need real
+  participants (BLOCKED BY EXTERNAL INPUT); per-vector delta compression is conditional and its trigger is not met (B3b). (The
   Stretch items are done, and persisted indexes, opt-in compression and the opt-in Pinned policy too: on-node-state trigger, intervention search, consistent cuts, knowledge view, node-local replay, live viewer.)
 * *What does intervention search do, and what can it miss?* `chronos search T0` takes the causal past of the first violation, turns each
   changeable event in it (a message, a scripted input, a fault rule) into a real counterfactual branch (drop, remove input, remove fault)

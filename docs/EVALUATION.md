@@ -106,8 +106,23 @@ bound (other fault kinds, larger subsets, other times, other seeds, message inte
 candidate space was the right one. The explorer is deterministic: the same configuration gives a byte-identical report (`SystematicExplorerTest`).
 Regenerate everything with `tools/regenerate-results.sh`.
 
+## NFR-15 dry run by the author (not the specified evidence)
+
+The specification asks that "a new team member can run the flagship demo from the README: under 10 minutes, three commands". The only valid
+evidence is a new person (`docs/HUMAN_STUDIES.md`, study A; **not run**). As a measurement of the *machine* part of that requirement the author
+timed the three README commands (`export JAVA_HOME=...`, `mvn -ntp clean package`, `java -jar chronos-cli/target/chronos.jar --data chronos-data demo`) on
+a clean `git archive` export of commit `9e89ed5` with an **empty Maven repository** (`-Dmaven.repo.local=/tmp/m2-empty`, so every dependency and plugin, 35 MB, was
+downloaded from Maven Central): build and 235 tests **79 s**, demonstration **1 s**, 80 s in total, exit codes 0, "24 of 24 checks passed". This is
+the floor: a person also has to find the README, install JDK 21 and Maven, and read.
+
+## Acceptance demonstrations: the time budget (benchmark B14, Section 26)
+
+AD-1 to AD-6 and the known-answer scenarios, 24 self-checks, run in **0.48 s** from a cold JVM (`chronos demo`, macOS) and in 0.50 s in the Linux container;
+the guided tour of `tools/professor-demo.sh` (11 steps including a full-store replay) takes 3.2 s. The target is under 10 minutes in total.
+
 ## Limits of this evaluation (honest)
 
+* **No human participant has been involved in any experiment here** (NFR-15 and the blind protocol are not run: `docs/HUMAN_STUDIES.md`).
 * **Not blind.** The same author wrote the scenarios, the fault generator, the case kit and the analysers (this applies to both experiments). The blind debugging protocol of Section 25
   (one author plants a bug without telling the other, who must find it using only CHRONOS, recording time and confusion) **was not run**:
   it needs a second person. This is the main missing piece of Phase 17.
