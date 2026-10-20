@@ -4,9 +4,9 @@
 |---|---|---|
 | macOS (Apple Silicon, JDK 21.0.12, Maven 3.10.0) | **verified** | `mvn -ntp clean package`: all tests pass; demo 24 of 24; benchmarks |
 | Linux (Ubuntu 24.04 aarch64 container, Temurin 21, Maven 3.9.16) | **verified** | `mvn -ntp package` on a copy of the source: all tests pass, golden files generated on macOS pass; packaged jar's demo 24 of 24 |
-| GitHub Actions `ubuntu-latest` (x86-64) | **verified** | run 39414554555: full build, 235 tests, demonstration |
+| GitHub Actions `ubuntu-latest` (x86-64) | **verified** | run 39451103248: full build, 238 tests, demonstration |
 | GitHub Actions `macos-latest` | **verified** | same run |
-| GitHub Actions `windows-latest` | **verified on the hosted runner** | same run: full build, 235 tests, demonstration. Not tested on a Windows machine of the author |
+| GitHub Actions `windows-latest` | **verified on the hosted runner** | same run: full build, 238 tests, demonstration. Not tested on a Windows machine of the author |
 
 ## What was done so that Windows works
 
@@ -27,7 +27,8 @@
   |---|---|---|---|---|---|
   | 39395403462 | `2df09fd` | FAIL | PASS | FAIL | Ubuntu: Maven could not download `org.junit:junit-bom:5.11.4` (a published artifact; external download failure, cause not provable because the job log needs a login); Windows: three tests assumed `/` and LF (DEV-53) |
   | 39397381422 | `0e6674c` | PASS | PASS | PASS | after the DEV-53 fixes and the retried model-resolution step |
-  | 39414554555 | `9e89ed5` | PASS | PASS | PASS | the final code (later commits change documents only); every job ran through packaging, all tests and the demonstration |
+  | 39414554555 | `9e89ed5` | PASS | PASS | PASS | the benchmarked code; every job ran through packaging, all tests and the demonstration |
+  | 39451103248 | `1ba0e19` | PASS | PASS | PASS | 238 tests; adds the study tooling, two documentation tests and a help-text fix |
 
   "PASS" means the job's steps *Build and test (all eight modules)* and *Flagship demonstration* both succeeded (checked through the GitHub API), not only the model-resolution step.
 
