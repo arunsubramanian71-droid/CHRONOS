@@ -135,10 +135,11 @@ class M10CatalogueTest {
     }
 
     /** Seeds of the 4,000-seed sweep that left a root outside the intervention's causal future before DEV-47 (a race decided the other way). */
-    private static final Set<Long> TIMING_RESIDUALS = new TreeSet<>(List.of(281L, 552L, 1945L, 2696L, 2715L, 3079L, 4085L, 8184L, 9356L, 10130L, 22656L, 23754L));
+    private static final Set<Long> TIMING_RESIDUALS = new TreeSet<>(List.of(281L, 552L, 1945L, 2696L, 2715L, 3079L, 4085L, 8184L, 9356L, 10130L, 22656L, 23754L, 2305L, 3038L, 3519L, 3962L));
 
     @Test
     void m10HoldsForTheSeedsWhoseRaceWasDecidedTheOtherWayByTheIntervention() {
+        // 2305, 3038, 3519, 3962: an OMISSION edge that exists in one timeline only, because the dropped messages that justify it differ (DEV-54);
         // DROP_MESSAGE shifts a receiver's lane so a crash-after trigger fires later; CONFIG_PATCH shifts a heartbeat so a watchdog wins the race;
         // DELAY_MESSAGE moves a delivery past a timer; REMOVE_INPUT moves a pause-after trigger
         sweep(23754, TIMING_RESIDUALS);

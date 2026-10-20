@@ -38,7 +38,7 @@ Paths are relative to the module's `src/main/java/chronos/<package>/`.
 | D-20 | Java 21, Maven, JUnit 5, JMH, hand-written fakes, own property generator | all poms; `EngineTest` `Fakes`; `SeededRandom` | `BuildRulesTest` | COMPLETE |
 | D-21 | Threads: engine single, one async writer, fixed worker pool | store `TimelineWriter`; analysis `CounterfactualEngine`, `Campaign` | `LawsTest.m12`, `TimelineStoreTest.theBoundedQueue...` | COMPLETE |
 | D-22 | Scenarios are Java classes registered by name | sdk `Scenario`, `ScenarioRegistry`; demo `DemoRegistry` | `CliTest`, `LawsTest.m1` | COMPLETE |
-| D-23 | OMISSION edge | runtime `FaultInjector.omissionSources`, `Engine.doTimer` | `AcceptanceTest.ad1`, `KnownAnswerTest` (KA-1, KA-3), `FaultCatalogueTest` (pause scope) | COMPLETE (partition scope refined, literal scope available and compared: DEV-03, `OmissionScopeStudyTest`) |
+| D-23 | OMISSION edge | runtime `FaultInjector.omissionSources`, `Engine.doTimer` | `AcceptanceTest.ad1`, `KnownAnswerTest` (KA-1, KA-3), `FaultCatalogueTest` (pause scope) | COMPLETE (partition scope = evidence scope, DEV-03 closed; literal scope available and compared; `OmissionScopeStudyTest`) |
 | D-24 | Env events keyed by what they concern | runtime `Engine` (`drop:`, `fault:`, `iv:`, `inv:`, `dup:`) | `LawsTest.m13`, `EngineTest.everyCopy...` | COMPLETE (+ copy suffixes: DEV-12) |
 | D-25 | INTERVENTION_APPLIED on env; origin in digest | runtime `Engine.applyInterventions`; model `Event.contentDigest` | `AcceptanceTest.ad4`, `LawsTest.m7, m10`, `CanonTest.eventLineRoundTrip...` | COMPLETE |
 | D-26 | Node API in its own module | `chronos-sdk` | `BuildRulesTest` | COMPLETE |
@@ -49,7 +49,7 @@ Paths are relative to the module's `src/main/java/chronos/<package>/`.
 |---|---|---|---|
 | 01 | Node API handlers; effects through context | sdk `Node`, `NodeContext`; `EngineTest` | COMPLETE (+`onClientInput`, `onRestart`: DEV-06) |
 | 02 | Deterministic single-threaded scheduler, stable tie-break | runtime `Agenda`, `AgendaItem`; `EngineTest` | COMPLETE |
-| 03 | Simulated network, per-link latency, no sockets | `Scenario.baseLatency/latencyJitter`; `RecordDecisionSource` | COMPLETE |
+| 03 | Simulated network, per-link latency, no sockets | `Scenario.baseLatency/latencyJitter`; `RecordDecisionSource`; `EngineTest` (the 10 ms ping-pong table), `BuildRulesTest` (no sockets) | COMPLETE |
 | 04 | Timers set/cancel in virtual time | `Engine.Ctx`; `EngineTest` | COMPLETE |
 | 05 | Seeded per-node and per-purpose streams, own generator | `SeededRandom`, `IdentityHash`; `CanonTest` | COMPLETE |
 | 06 | Scenario declares nodes, config, workload, fault plan, invariants; runs by name with seed and horizon | `Scenario`, `DemoRegistry`, CLI `run`; `CliTest` | COMPLETE |
@@ -100,10 +100,10 @@ Paths are relative to the module's `src/main/java/chronos/<package>/`.
 | 46 | Static self-contained HTML report | `HtmlReport`; `CliTest`, demo AD-6 (rendered in a browser during development) | COMPLETE |
 | 47 | CLI: run, replay, inspect, branch, inject, compare | `Main`, `Cli`; `CliTest` | COMPLETE |
 | 48 | One command runs a scenario twice and compares hashes | CLI `determinism` (+ `--jvm N`); `CliTest.determinismAcrossFreshJvmLaunches` | COMPLETE |
-| 49 | Demos: ping-pong, causal-ordering, RE, two more known-answer | demo module | COMPLETE (KA-2, KA-3, KA-4 + control + bad citizen) |
+| 49 | Demos: ping-pong, causal-ordering, RE, two more known-answer | demo module; `KnownAnswerTest`, `AcceptanceTest`, `DemoScriptsTest` (each demo is run by name) | COMPLETE (KA-2, KA-3, KA-4 + control + bad citizen) |
 | 50 | Live local web viewer (Stretch) | `Viewer` + `viewer.html` (cli), `chronos serve` | COMPLETE as a read-only viewer (DEV-33); `ViewerTest` (endpoints, bad requests, 405 on writes, store unchanged); the page was opened and driven in a browser |
-| 51 | INTERVENTION_APPLIED on env, id `iv:<id>`, origin in digest | `Engine.applyInterventions` | COMPLETE |
-| 52 | OMISSION edges: partition scope (12a), crash and pause scopes (12b) | `FaultInjector`; `FaultCatalogueTest`, `KnownAnswerTest` | COMPLETE (partition scope refined, literal scope available and compared: DEV-03, `OmissionScopeStudyTest`) |
+| 51 | INTERVENTION_APPLIED on env, id `iv:<id>`, origin in digest | `Engine.applyInterventions`; `M10CatalogueTest` (every intervention type yields `iv:<id>` on env and the law that depends on it), `AcceptanceTest.ad4` | COMPLETE |
+| 52 | OMISSION edges: partition scope (12a), crash and pause scopes (12b) | `FaultInjector`; `FaultCatalogueTest`, `KnownAnswerTest` | COMPLETE (partition scope = evidence scope, DEV-03 closed; literal scope available and compared; `OmissionScopeStudyTest`) |
 
 ## Non-functional requirements NFR-01 to NFR-20
 
@@ -124,7 +124,7 @@ Paths are relative to the module's `src/main/java/chronos/<package>/`.
 | 13 | Single direction of dependency, enforced by the build | `BuildRulesTest` + Maven | COMPLETE |
 | 14 | Linux, Windows, macOS with Java 21 | macOS (Apple Silicon, JDK 21, Maven 3.10.0): full build and tests; **Linux** (Ubuntu 24.04, aarch64, Temurin 21, Maven 3.9.16, in a container on a copy of the source; see `docs/PORTABILITY.md`, which also prepares Windows): `mvn package` BUILD SUCCESS, all tests incl. the golden files generated on macOS and the process-kill test | COMPLETE on macOS and Linux; **NOT VERIFIED on Windows** |
 | 15 | New member runs the demo from the README in < 10 minutes, three commands | README: set JAVA_HOME, `mvn -ntp package`, `java -jar ... demo`; the demo itself takes seconds | NOT VERIFIED with a new person |
-| 16 | Output speaks CHRONOS vocabulary and cites event ids | all reports | COMPLETE |
+| 16 | Output speaks CHRONOS vocabulary and cites event ids | all reports; `CliTest` and `AcceptanceTest` assert event ids in `why`, `compare` and run output, `VerificationSummaryTest` in the JSON | COMPLETE |
 | 17 | Every component has a teaching note and a runnable demo | `docs/TEACHING_NOTES.md` (one note per component C1 to C18); Javadoc on all 83 public types; `docs/VIVA_GUIDE.md` (concepts); `docs/DEMO_SCRIPTS.md` (a runnable script per subsystem, executed by `DemoScriptsTest`) | COMPLETE (that the author has *explained* the subsystem to the other team member cannot be verified here) |
 | 18 | Format version on stored files; old logs refused clearly | `TimelineStoreTest.aLogWithAnUnknownFormatVersionIsRefused` | COMPLETE |
 | 18b | Log compression (cut line 6) | `TimelineStore.compressNewTimelines`, `TimelineWriter` (gzip), CLI `--compress`, B12/B6b | COMPLETE as opt-in segment compression (DEV-34); `TimelineStoreTest.compressed...`, `CliTest.compressedRecordings...`; per-vector delta compression NOT DONE (its spec trigger did not occur) |

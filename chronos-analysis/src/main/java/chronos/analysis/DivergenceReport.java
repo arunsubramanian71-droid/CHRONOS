@@ -25,7 +25,7 @@ public record DivergenceReport(String timelineA, String timelineB, boolean stric
      * Either way its consequences stay in the cone.
      */
     public record Displaced(char side, String eventId, String nodeId, String relatedEvent, String reason) {
-        public static final String RENUMBERED = "renumbered", SILENCE = "silence", ABSENCE = "absence", TIMING = "timing";
+        public static final String RENUMBERED = "renumbered", SILENCE = "silence", ABSENCE = "absence", TIMING = "timing", POTENTIAL_EDGE = "potential-edge";
     }
 
     /** One hop of the explanation path: from-event, to-event, the kind of link and a plain-language line. */
@@ -61,6 +61,8 @@ public record DivergenceReport(String timelineA, String timelineB, boolean stric
             sb.append("    (displaced, not a root: ").append(d.eventId()).append(" [").append(d.side() == 'A' ? timelineA : timelineB).append("] ")
                     .append(d.reason().equals(Displaced.SILENCE)
                             ? "follows the dropped message " + d.relatedEvent() + " to " + d.nodeId() + " (potential link: what the node was waiting for never came)"
+                            : d.reason().equals(Displaced.POTENTIAL_EDGE)
+                            ? "differs from its counterpart in the other timeline only by the OMISSION edge from " + d.relatedEvent() + " (potential link: which messages the fault dropped to " + d.nodeId() + " differs; the event itself behaved the same)"
                             : d.reason().equals(Displaced.TIMING)
                             ? "replaces an event of the other timeline that depended on or handled " + d.relatedEvent() + ", which happened later or differently here (potential link: the race was decided the other way)"
                             : d.reason().equals(Displaced.ABSENCE)

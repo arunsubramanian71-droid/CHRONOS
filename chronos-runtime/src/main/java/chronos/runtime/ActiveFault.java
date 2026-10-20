@@ -23,6 +23,8 @@ final class ActiveFault {
     Ref shortener;       // that intervention's event
     Ref alterer;         // an intervention that moved this fault's end (earlier or later) or removed it
     long origEnd = Long.MAX_VALUE; // when the original run's fault would have ended (Long.MAX_VALUE: never); meaningful only with alterer
+    /** Partition: node -> virtual time of the latest delivery to it that this partition dropped (the evidence of a silenced message, DEV-03). */
+    final Map<String, Long> lastDropTo = new TreeMap<>();
     final List<List<String>> groups;
     final String node;
 
@@ -70,6 +72,7 @@ final class ActiveFault {
             m.put("alterer", alterer.toMap());
             m.put("origEnd", origEnd);
         }
+        if (!lastDropTo.isEmpty()) m.put("lastDropTo", lastDropTo);
         m.put("groups", groups);
         if (node != null) m.put("node", node);
         return m;
@@ -90,6 +93,7 @@ final class ActiveFault {
         if (m.containsKey("extender")) f.extender = Ref.fromMap(Canon.map(m.get("extender")));
         if (m.containsKey("shortenedFrom")) f.shortenedFrom = Canon.num(m.get("shortenedFrom"));
         if (m.containsKey("shortener")) f.shortener = Ref.fromMap(Canon.map(m.get("shortener")));
+        if (m.containsKey("lastDropTo")) for (Map.Entry<String, Object> e : Canon.map(m.get("lastDropTo")).entrySet()) f.lastDropTo.put(e.getKey(), Canon.num(e.getValue()));
         if (m.containsKey("alterer")) {
             f.alterer = Ref.fromMap(Canon.map(m.get("alterer")));
             f.origEnd = Canon.num(m.get("origEnd"));

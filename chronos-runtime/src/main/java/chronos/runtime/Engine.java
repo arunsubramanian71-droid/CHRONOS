@@ -414,6 +414,7 @@ public final class Engine {
                 dropOrigin = faults.origin(cut.ruleId + "/clear");
             }
             group.add(emitEnv(dropId, EventKind.MESSAGE_DROPPED, mapOf("messageId", msgId, "reason", "partition " + cut.ruleId), links, dropOrigin));
+            cut.lastDropTo.put(to, time); // a message to this node was silenced by the partition: evidence for an OMISSION edge on its timers (DEV-03)
             return null;
         }
         List<Link> links = new ArrayList<>();

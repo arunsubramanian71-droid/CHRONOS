@@ -114,16 +114,17 @@ heard from the other side), **DEV-02** (digest parent ids exclude PROGRAM_ORDER)
 
 ## Open specification questions
 
-* **Q1** (deadline and weekly hours): OPEN. The 24-hour target is a conversation constraint, not an answer to Q1.
-* **Q6** (institution's evaluation form): OPEN. Default (demonstration, report, viva) used.
+* **Q1** (deadline and weekly hours): CLOSED as a retrospective planning item (DEV log, 2026-10-20). The real values were never supplied and are not invented; no remaining task depends on them.
+* **Q6** (institution's evaluation form): resolved by the specification's own default (demonstration, report, viva) as a **working assumption**; the official rubric is unconfirmed.
+* **DEV-03** (OMISSION scope for partitions): CLOSED, final "evidence scope" (see `docs/DEVIATIONS.md`).
 * The specification marks D-23 to D-26 "New in v0.2" while its cover says all of D-01 to D-26 are approved; all four are implemented.
 
 ## Next highest-priority actions (if work continues)
 
 1. Run the blind-debugging evaluation with a second person using `chronos blind` (`docs/BLIND_PROTOCOL.md`) and write the evaluation chapter (Phase 17).
 2. Every Stretch and cut-line item named in the specification is now implemented (the Pinned policy as an opt-in, DEV-35); what remains is listed under "Not implemented" above.
-3. Decide DEV-03 with the other author (keep the refined OMISSION scope or revert to the literal 12a rule).
-4. Verify on Windows; then, after the project is judged complete, create the GitHub repository (deliberately **not** done: no remote exists and nothing was pushed).
+3. (done) DEV-03 is closed: the evidence scope is final.
+4. The project is published at https://github.com/arunsubramanian71-droid/CHRONOS (branch `publish-no-assistant-trailers`); its GitHub Actions jobs are the cross-platform evidence (`docs/PORTABILITY.md`).
 
 ## How to resume safely
 

@@ -11,7 +11,7 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * DEV-03: the specification's Phase 12a sentence read literally ("touches" = the node sits on a side of an active partition) versus
+ * DEV-03 (closed): the specification's Phase 12a sentence read literally ("touches" = the node sits on a side of an active partition) versus
  * the refined scope CHRONOS uses by default (the node must also have heard from the other side, the test the specification gives for
  * crash and pause). The switch is the scenario parameter omission=literal. This test records what each choice does.
  */
@@ -86,5 +86,77 @@ class OmissionScopeStudyTest {
                     assertTrue(e.problems().isEmpty(), mode + " " + sc + " seed " + e.seed() + ": " + e.problems());
             }
         }
+    }
+
+    // ---- the final scope (evidence of a silenced message), DEV-03 -------------------------------------------------------------------------
+
+    private static final FaultPlan EARLY = FaultPlan.of(FaultRule.partition("early", 0, 500L, List.of(List.of("p", "client"), List.of("b"))));
+
+    private Set<String> omissionNodes(List<Event> ev, String rule) {
+        Set<String> nodes = new TreeSet<>();
+        for (Event e : ev)
+            for (Parent par : e.parents()) if (par.kind() == EdgeKind.OMISSION && par.id().startsWith("fault:" + rule)) nodes.add(e.nodeId());
+        return nodes;
+    }
+
+    @Test
+    void aPartitionThatBeginsBeforeAnyContactStillExplainsTheWatchdogItCausedAndOnlyThat() {
+        // Found while closing DEV-03: with the heard-from test alone b had never heard from p when the partition began at 0 ms, so its watchdog
+        // got no OMISSION edge and `why` could not name the partition. A silenced message (p's heartbeat dropped on its way to b) is the evidence.
+        Env env = new Env(tmp.resolve("early"));
+        env.record("re", 42, Map.of("partition", "off"), EARLY, Boolean.FALSE);
+        String t0 = env.last;
+        List<Event> ev = env.events(t0);
+        assertEquals(Set.of("b"), omissionNodes(ev, "early"), "b's watchdog, and nothing on p or the client (their timers wait for nothing from b)");
+        Event fired = ev.stream().filter(e -> e.nodeId().equals("b") && e.kind() == EventKind.TIMER_FIRED).findFirst().orElseThrow();
+        assertTrue(fired.parents().stream().anyMatch(par -> par.kind() == EdgeKind.OMISSION && par.id().equals("fault:early#1")));
+        assertTrue(ev.stream().anyMatch(e -> e.kind() == EventKind.MESSAGE_DROPPED && "partition early".equals(e.payload().get("reason"))), "the evidence exists in the log");
+        TimeTravelSession s = new TimeTravelSession(env.store, t0);
+        s.goToViolation();
+        String why = s.why(null);
+        assertTrue(why.contains("chain from fault:early#1") && why.contains("--OMISSION-->"), why);
+        assertTrue(why.contains("POTENTIAL"), "and it is still labelled potential: " + why);
+        // the literal rule of Phase 12a adds edges on nodes whose timers wait for nothing across the cut; the final scope is a subset of it
+        Env lit = new Env(tmp.resolve("earlyLit"));
+        lit.record("re", 42, Map.of("partition", "off", "omission", "literal"), EARLY, Boolean.FALSE);
+        Set<String> literalNodes = omissionNodes(lit.events(lit.last), "early");
+        assertTrue(literalNodes.containsAll(Set.of("b")) && literalNodes.size() > 1, "literal: " + literalNodes);
+        // the whole thing is deterministic and replays, also from every checkpoint (the evidence is part of the world image)
+        assertTrue(env.replay.verify(t0).ok());
+        for (long seq : env.store.checkpointSeqs(t0)) assertTrue(env.replay.verifyFrom(t0, seq).ok(), "resume from checkpoint " + seq);
+        assertTrue(CausalGraph.build(ev).selfCheck(200).isEmpty());
+    }
+
+    @Test
+    void theFinalScopeNeverAddsAnEdgeTheLiteralRuleWouldNotAndNeverRemovesOneTheHeardFromTestHad() {
+        TestRegistry reg = new TestRegistry();
+        int compared = 0, extra = 0;
+        for (String sc : List.of("re", "re2", "ka2", "ka3", "gossip", "control")) {
+            for (long seed = 1; seed <= 40; seed++) {
+                var scenario = reg.create(sc, sc.equals("gossip") ? Map.of("nodes", "4", "horizon", "300") : Map.of());
+                FaultPlan plan = ChaosPlanGenerator.generate(scenario, seed, sc.equals("gossip") ? 300 : scenario.defaultHorizon());
+                Map<String, String> params = sc.equals("gossip") ? Map.of("nodes", "4", "horizon", "300") : Map.of();
+                Set<String> fin = edges(reg, sc, seed, params, plan), lit = edges(reg, sc, seed, merge(params, "omission", "literal"), plan);
+                assertTrue(lit.containsAll(fin), sc + " seed " + seed + ": final scope has edges the literal rule lacks: " + fin);
+                compared++;
+                if (lit.size() > fin.size()) extra++;
+            }
+        }
+        assertEquals(240, compared);
+        assertTrue(extra > 0, "the literal rule is genuinely broader on some runs, so the comparison is not vacuous");
+    }
+
+    private static Map<String, String> merge(Map<String, String> m, String k, String v) {
+        Map<String, String> r = new TreeMap<>(m);
+        r.put(k, v);
+        return r;
+    }
+
+    private Set<String> edges(TestRegistry reg, String sc, long seed, Map<String, String> params, FaultPlan plan) {
+        var run = Recording.recordInMemory(reg, "Xs", Recording.Spec.of(sc, seed).withParams(params).withPlan(plan).withCheckpointInterval(0));
+        Set<String> out = new TreeSet<>();
+        for (Event e : run.log().events())
+            for (Parent par : e.parents()) if (par.kind() == EdgeKind.OMISSION) out.add(e.eventId() + "<-" + par.id());
+        return out;
     }
 }

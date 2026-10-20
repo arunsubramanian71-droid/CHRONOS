@@ -158,7 +158,7 @@ Measured results (and which targets of Section 8 were met or missed) are in [`do
 * `docs/TRACEABILITY.md`: every decision D-01..D-26, requirement FR/NFR, law M1..M14, known-answer scenario and acceptance
   demonstration mapped to code and tests, each marked COMPLETE / SIMPLIFIED / NOT IMPLEMENTED / NOT VERIFIED.
 * `docs/DEVIATIONS.md`: where this implementation interprets, extends or departs from the specification, and why. Also the
-  open questions Q1 and Q6.
+  its question log (Q1 closed retrospectively, Q6 a working assumption).
 * `docs/USER_GUIDE.md` (a task-oriented walk-through with the tutorial application), `docs/ARCHITECTURE.md`, `docs/TEACHING_NOTES.md` (one note per component),
   `docs/DEMO_SCRIPTS.md` (a short runnable script per subsystem, executed by a test), `docs/PORTABILITY.md` (macOS, Linux, Windows status), `docs/BLIND_PROTOCOL.md` (the kit for the blind debugging protocol).
 * `docs/BENCHMARKS.md` (measured results), `docs/EVALUATION.md` (the experiment on unplanned failures and what it does not show),

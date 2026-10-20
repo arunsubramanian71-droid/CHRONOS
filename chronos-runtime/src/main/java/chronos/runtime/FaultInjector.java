@@ -391,9 +391,22 @@ final class FaultInjector {
         for (ActiveFault f : all) {
             if (f.start > fireAt) continue;
             if (f.end != null && f.end <= setAt) continue;
-            if (touches(slot, f)) out.add(f);
+            if (touches(slot, f) || silencedDuring(slot, f, setAt)) out.add(f);
         }
         return out;
+    }
+
+    /**
+     * DEV-03, final scope for partitions: besides "the node has heard from the other side before", a partition also touches a node whose
+     * timer waited while the partition dropped a message addressed to that node (a silenced message is exactly the thing an OMISSION edge
+     * stands for). This keeps the precision of the heard-from test (an isolated node's own heartbeat timers wait for nothing and get no
+     * edge) and closes its gap: a partition that begins before the first contact still explains the watchdog it caused. It never adds an
+     * edge the specification's literal Phase 12a sentence would not add.
+     */
+    private boolean silencedDuring(NodeSlot slot, ActiveFault f, long setAt) {
+        if (!f.kind.equals("partition") || f.groupOf(slot.name) < 0) return false;
+        Long last = f.lastDropTo.get(slot.name);
+        return last != null && last >= setAt;
     }
 
     /** DEV-03: when true, a partition touches every node that sits on a side of it, as the specification's Phase 12a sentence reads literally. */

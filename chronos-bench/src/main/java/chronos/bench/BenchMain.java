@@ -64,6 +64,7 @@ public final class BenchMain {
         } else {
             engineAndRecording(quick ? 10_000 : 100_000);
             clocks();
+            vectorClockTrigger();
             encoding();
             graphAndSeek(quick ? new int[]{10_000} : new int[]{10_000, 100_000});
             replaySpeed(quick ? new int[]{10_000} : new int[]{10_000, 100_000});
@@ -304,6 +305,45 @@ public final class BenchMain {
             });
             Event e = new Event("n#1", 1, "T0", "n", EventKind.APP_NOTE, 1, 1, cs.current(0).vector(), List.of(), Map.of("text", "x"), "d", null, null);
             row("B3", "How does vector-clock cost grow with the node count?", "nodes=" + nodes, "ns per receive", s, "ns/op", "event line " + e.toLine().length() + " bytes; informs compression");
+        }
+    }
+
+    /**
+     * B3b: the trigger of Section 26 for delta compression of vector clocks: "vector-clock cost dominates at 20 nodes". Dominates is read as more
+     * than half, of either the time an event costs the engine or the bytes it takes on disk. The time share divides the cost of one clock
+     * stamp (B3's measurement, at the same node count) by the engine's measured time per event on a real gossip run; the byte share is the
+     * vector field's share of the encoded event lines of that run.
+     */
+    private static void vectorClockTrigger() {
+        for (int nodes : new int[]{10, 20}) {
+            ClockService cs = new ClockService(nodes);
+            Stamp in = new ClockService(nodes).stamp(nodes - 1, List.of());
+            int ops = 200_000;
+            Stats stamp = Stats.measure(reps, () -> {
+                long t = System.nanoTime();
+                for (int i = 0; i < ops; i++) cs.stamp(i % nodes, List.of(in));
+                return (System.nanoTime() - t) / (double) ops;
+            });
+            long horizon = horizonFor(nodes, quick ? 20_000 : 100_000);
+            Stats perEvent = Stats.measure(reps, () -> 1e9 / eventsPerSecond(horizon, nodes, new NullSink()));
+            double timeShare = 100.0 * stamp.median / perEvent.median;
+            List<Event> events = recordMem(nodes, quick ? 20_000 : 100_000, 0).log().events();
+            long vectorBytes = 0, allBytes = 0, withState = 0;
+            for (Event e : events) {
+                if (e.stateAfter() != null) withState++;
+                allBytes += e.toLine().length() + 1;
+                vectorBytes += ("\"v\":" + Canon.json(e.vector()) + ",").length();
+            }
+            double byteShare = 100.0 * vectorBytes / allBytes;
+            String variant = "nodes=" + nodes + ", " + events.size() + " events";
+            row("B3b", "Does vector-clock cost dominate (Section 26 trigger for delta compression)?", variant, "clock stamp as share of the engine's time per event",
+                    fmt(timeShare), fmt(timeShare), fmt(timeShare), "%", fmt(stamp.median) + " ns per stamp against " + fmt(perEvent.median) + " ns per event");
+            row("B3b", "Does vector-clock cost dominate (Section 26 trigger for delta compression)?", variant, "vector field as share of the encoded event line",
+                    fmt(byteShare), fmt(byteShare), fmt(byteShare), "%", vectorBytes / events.size() + " of " + allBytes / events.size() + " bytes per event, state records included (on "
+                    + 100 * withState / events.size() + "% of the events)");
+            boolean met = timeShare > 50 || byteShare > 50;
+            row("B3b", "Does vector-clock cost dominate (Section 26 trigger for delta compression)?", variant, "trigger (more than 50% of time or bytes)",
+                    met ? "MET" : "NOT MET", "", "", "", met ? "implement delta compression of vectors" : "delta compression of vectors is not needed; the conditional requirement is closed");
         }
     }
 

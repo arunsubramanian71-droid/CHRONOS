@@ -2,8 +2,8 @@
 
 The specification (Section 4) asks both authors to be able to explain, without notes: Lamport and vector clocks, happens-before,
 consistent cuts, event sourcing, deterministic replay, why identical code can behave differently, and what a counterfactual can
-and cannot prove. This guide maps each to the code and to a command that shows it. (Q6 is open; the default evaluation form of
-the specification, demonstration + report + viva, is assumed.)
+and cannot prove. This guide maps each to the code and to a command that shows it. (Q6: the official rubric is unconfirmed; the default evaluation form of
+the specification, demonstration + report + viva, is the working assumption.)
 
 ## A 10-minute demonstration script
 

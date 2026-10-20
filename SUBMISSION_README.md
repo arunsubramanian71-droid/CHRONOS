@@ -73,7 +73,7 @@ CHRONOS_FUZZ_FROM=20001 CHRONOS_FUZZ_SEEDS=26000 mvn -ntp -pl chronos-cli -am te
 
 * Verified on macOS (Apple Silicon) and Linux (Ubuntu aarch64 container). **Windows is not verified** (its first CI run failed on three test-portability defects, DEV-53; see `docs/PORTABILITY.md` for the current CI status). The CI workflow is `.github/workflows/build.yml`.
 * **Not implemented:** per-vector delta compression (the specification's trigger condition did not occur). The **blind-debugging evaluation** needs a second person; the kit is built (`chronos blind`) but no session has been run, so no blind result is claimed.
-* **Open decisions:** DEV-03 (scope of OMISSION edges for partitions, left to the other author), Q1 (deadline and weekly hours), Q6 (the institution's evaluation form).
+* **Decisions:** DEV-03 (OMISSION scope for partitions) is closed with a final "evidence scope"; Q1 (deadline, weekly hours) is closed as a retrospective planning item; Q6 uses the specification's default (demonstration, report, viva) as a working assumption because no official rubric is available.
 * Explanations marked "potential" (OMISSION edges, displaced events, the possible-silence section) are hypotheses, not proved causes.
 * The systematic explorer and `minimize` give guarantees only inside their stated bounds (1-minimal, not minimum; "no violation" means none in the bound).
 * Timings in `docs/BENCHMARKS.md` are from one machine (Apple M2 Max).

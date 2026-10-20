@@ -23,6 +23,10 @@ xl_seek, xl20_seek, xld_seek = xl['worst of 100 jumps'], xl20['worst of 100 jump
 b7 = pick('B7')
 b8 = pick('B8')
 b3 = {r['variant']: float(r['median']) for r in pick('B3')}
+b3b20 = {r['metric'].split(' (')[0]: r for r in pick('B3b', 'nodes=20')}
+b3b_time = [r for r in b3b20.values() if 'share of the engine' in r['metric']][0]
+b3b_bytes = [r for r in b3b20.values() if 'encoded event line' in r['metric']][0]
+b3b_trigger = [r for r in b3b20.values() if r['metric'].startswith('trigger')][0]
 b12 = pick('B12')
 b12_full = [r for r in b12 if 'full state' in r['variant']][0]
 b12_digest = [r for r in b12 if 'digests only' in r['variant']][0]
@@ -77,6 +81,7 @@ java -jar chronos-bench/target/chronos-bench.jar eval --seeds 400               
 | NFR-07 | replay within 2x of the original | {r7['10085']:.2f}x at 10,085 events, {r7['100733']:.2f}x at 100,733 events, {r7['1M']:.2f}x at 1,018,235 events (10 nodes), {r7['1M-20']:.2f}x at 1,017,092 events (20 nodes), {r7['1M-disk']:.2f}x against the persisted recording of the 20-node timeline | **{'met at every size measured' if ok7 else 'MISSED at ' + ', '.join(k for k, v in r7.items() if v > 2)}** |
 | NFR-08 | branch cost independent of prefix length | branch creation {min(float(r['median']) for r in b8):.0f}-{max(float(r['median']) for r in b8):.0f} ms at prefixes of 10k, 50k and 90k events of a 100,733-event timeline; the branch stores ~80 KiB against the parent's 30,250 KiB | **met** |
 | NFR-09 | 3-20 nodes, ~1,000,000 events | 1,018,235 events at 10 nodes **and** 1,017,092 events at 20 nodes (the top of the envelope): each recorded in memory, graph-built, sought in and replay-verified; the 20-node timeline also persisted to disk by the real store, read back in a fresh store and replay-verified | **met** |
+| Section 26 | conditional: implement delta compression of vectors if vector-clock cost dominates at 20 nodes | at 20 nodes a clock stamp is {b3b_time['median']} % of the engine's time per event ({b3b_time['note']}) and the vector field is {b3b_bytes['median']} % of the encoded event line ({b3b_bytes['note']}); trigger (more than 50% of either) **{b3b_trigger['median'].lower()}** | **{'not needed' if b3b_trigger['median'] == 'NOT MET' else 'IMPLEMENT'}** |
 | NFR-10 | measure and report bytes per event | {b12_full['median']} bytes/event with state records ({b12_digest['median']} without) on the 5-node run; in memory ~{xl['heap used']['note'].split(' bytes')[0]} bytes/event at 10 nodes, ~{xl20['heap used']['note'].split(' bytes')[0]} at 20; on disk {xld['bytes per event']['median']} bytes/event at 20 nodes (vectors grow with the node count); gzip compression (opt-in) {[r for r in b12 if 'gzip' in r['variant']][0]['median']} bytes/event on the 5-node run | measured and reported; the initial expectation (< 300 bytes without states) holds for the 5-node run and is exceeded at 20 nodes, which the specification allows (no pass-or-fail target) |
 
 ## Harness results (JDK 21)
@@ -97,7 +102,7 @@ o.append("""
 
 Reading the numbers: the vector-clock cost grows roughly linearly with the node count (B3, harness: {b3['nodes=3']:.0f} ns per receive at 3
 nodes, {b3['nodes=100']:.0f} ns at 100), so delta compression of vectors is **not** needed for the design envelope of 3-20 nodes
-({b3['nodes=20']:.0f} ns at 20). The own random generator costs ~2 ns, an identity-keyed decision ~18 ns.
+({b3['nodes=20']:.0f} ns at 20; B3b measures the Section 26 trigger directly: {b3b_time['median']} % of the time and {b3b_bytes['median']} % of the bytes of an event at 20 nodes, trigger {b3b_trigger['median'].lower()}). The own random generator costs ~2 ns, an identity-keyed decision ~18 ns.
 
 ## B13: the asynchronous writer on a slow disk
 

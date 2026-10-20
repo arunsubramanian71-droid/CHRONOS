@@ -100,6 +100,7 @@ public final class TimelineComparator {
         // 5b. a root that is only a renumbered copy of an event of the other timeline's lane is not an independent root (DEV-36)
         List<DivergenceReport.Displaced> displaced = new ArrayList<>();
         List<Root> demoted = new ArrayList<>();
+        roots = demotePotentialEdgeOnly(roots, ea, eb, prefix, strict, displaced, demoted);
         roots = demoteExplained(roots, ea, eb, ca, cb, prefix, displaced, demoted);
         roots = demoteShiftedCauses(roots, ea, eb, ga, gb, prefix, displaced, demoted);
 
@@ -268,6 +269,53 @@ public final class TimelineComparator {
      * lane in the other timeline was only renumbered (DEV-36); (2) a root that is the node's first different event after a message to that
      * node was dropped by an event that is itself divergent (an intervention's drop) is the node noticing the missing input (silence).
      */
+    /**
+     * An OMISSION edge is an explanatory annotation ("the timer may have fired because messages never came"), derived from which messages a
+     * fault dropped to the node (DEV-03). A root whose counterpart in the other timeline has the same kind, payload, state digest, origin and
+     * every non-OMISSION parent, and differs only in its OMISSION parents, did not behave differently: the dropped messages that justify the
+     * edge differ because of something upstream. It is reported as displaced (reason "potential-edge"), not as an independent root (DEV-54).
+     */
+    private static List<Root> demotePotentialEdgeOnly(List<Root> roots, List<Event> ea, List<Event> eb, int prefix, boolean strict,
+                                                      List<DivergenceReport.Displaced> displaced, List<Root> demoted) {
+        List<Root> keep = new ArrayList<>();
+        for (Root r : roots) {
+            List<Event> mine = r.side() == 'A' ? ea : eb, theirs = r.side() == 'A' ? eb : ea;
+            Event e = mine.get(r.pos()), counterpart = null;
+            for (int i = prefix; i < theirs.size(); i++) if (theirs.get(i).eventId().equals(e.eventId())) { counterpart = theirs.get(i); break; }
+            if (counterpart == null || e.kind() != EventKind.TIMER_FIRED || !withoutOmission(e, strict).equals(withoutOmission(counterpart, strict))) {
+                keep.add(r);
+                continue;
+            }
+            Set<String> mineOm = omissionParents(e), theirOm = omissionParents(counterpart);
+            TreeSet<String> differing = new TreeSet<>(mineOm);
+            differing.addAll(theirOm);
+            Set<String> both = new TreeSet<>(mineOm);
+            both.retainAll(theirOm);
+            differing.removeAll(both);
+            if (differing.isEmpty()) {
+                keep.add(r);
+                continue;
+            }
+            displaced.add(new DivergenceReport.Displaced(r.side(), r.eventId(), r.nodeId(), differing.first(), DivergenceReport.Displaced.POTENTIAL_EDGE));
+            demoted.add(r);
+        }
+        return keep;
+    }
+
+    private static Set<String> omissionParents(Event e) {
+        Set<String> s = new TreeSet<>();
+        for (Parent p : e.parents()) if (p.kind() == EdgeKind.OMISSION) s.add(p.id());
+        return s;
+    }
+
+    /** The content digest of an event with its OMISSION parents left out. */
+    private static String withoutOmission(Event e, boolean strict) {
+        List<Parent> ps = new ArrayList<>();
+        for (Parent p : e.parents()) if (p.kind() != EdgeKind.OMISSION) ps.add(p);
+        return new Event(e.eventId(), e.seq(), e.timelineId(), e.nodeId(), e.kind(), e.virtualTime(), e.lamport(), e.vector(), ps, e.payload(), e.stateDigestAfter(), e.stateAfter(), e.origin())
+                .contentDigest(strict);
+    }
+
     private static List<Root> demoteExplained(List<Root> roots, List<Event> ea, List<Event> eb, EventClass[] ca, EventClass[] cb, int prefix,
                                               List<DivergenceReport.Displaced> displaced, List<Root> demoted) {
         Map<String, Map<String, String>> laneA = new HashMap<>(), laneB = new HashMap<>(); // node -> content key -> first event id
