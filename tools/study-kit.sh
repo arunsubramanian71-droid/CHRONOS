@@ -133,8 +133,13 @@ cmd_self_test() {
   echo "SELF-TEST: this checks the study tooling; nothing printed here is study data."
   cmd_env_check >/dev/null 2>&1 && echo "  [ok] env-check"
   # Study A tooling: pinned clean checkout from the local repository
-  CHRONOS_REPO_URL="file://$ROOT" cmd_nfr15_prepare "$t/a" "$(git -C "$ROOT" rev-parse HEAD)" >/dev/null 2>&1 || { echo "  [FAIL] nfr15-prepare"; fail=1; }
-  [ -f "$t/a/CHRONOS/pom.xml" ] && [ ! -d "$t/a/CHRONOS/.git" ] && [ ! -d "$t/a/CHRONOS/chronos-cli/target" ] && echo "  [ok] nfr15-prepare: clean tree at the pinned commit, no .git, no build output" || { echo "  [FAIL] clean tree"; fail=1; }
+  if [ -d "$ROOT/.git" ]; then
+    CHRONOS_REPO_URL="file://$ROOT" cmd_nfr15_prepare "$t/a" "$(git -C "$ROOT" rev-parse HEAD)" >/dev/null 2>&1 || { echo "  [FAIL] nfr15-prepare"; fail=1; }
+    [ -f "$t/a/CHRONOS/pom.xml" ] && [ ! -d "$t/a/CHRONOS/.git" ] && [ ! -d "$t/a/CHRONOS/chronos-cli/target" ] && echo "  [ok] nfr15-prepare: clean tree at the pinned commit, no .git, no build output" || { echo "  [FAIL] clean tree"; fail=1; }
+  else
+    mkdir -p "$t/a"; echo "prepared=selftest" > "$t/a/session.env"
+    echo "  [skipped] nfr15-prepare needs a git checkout (this is an archive without .git); it clones the published repository"
+  fi
   cmd_nfr15_clock "$t/a" start >/dev/null && cmd_nfr15_clock "$t/a" stop | grep -q "Under 10 minutes: YES" && echo "  [ok] nfr15-clock" || { echo "  [FAIL] nfr15-clock"; fail=1; }
   # Study B tooling: five kinds, answered by the tooling itself from the grader's planted set (checks the pipeline, not the tool)
   cmd_blind_prepare "$t/b" 0 >/dev/null 2>&1 || { echo "  [FAIL] blind-prepare"; fail=1; }
